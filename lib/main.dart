@@ -1,14 +1,21 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import 'models/gifticon_models.dart';
 import 'modules/gifticon_detector_module.dart';
 import 'modules/image_picker_module.dart';
 import 'modules/ocr_module.dart';
-import 'services/gifticon_pipeline_service.dart';
 import 'modules/remote_gifticon_ai_parser.dart';
+import 'services/gifticon_pipeline_service.dart';
+import 'services/gifticon_storage_service.dart';
+import 'pages/gifticon_list_page.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Hive.initFlutter();
+
   runApp(const MyApp());
 }
 
@@ -37,9 +44,13 @@ class GifticonDemoPage extends StatefulWidget {
 
 class _GifticonDemoPageState extends State<GifticonDemoPage> {
   late final GifticonPipelineService _pipeline;
+  final GifticonStorageService _storageService = GifticonStorageService();
 
   bool _loading = false;
+  bool _saving = false;
+  bool _saved = false;
   bool? _isGifticon;
+
   GifticonInfo? _parsedInfo;
   String _statusText = '아직 실행 전';
   File? _selectedImage;
@@ -47,14 +58,17 @@ class _GifticonDemoPageState extends State<GifticonDemoPage> {
   @override
   void initState() {
     super.initState();
+
     _pipeline = GifticonPipelineService(
       imagePicker: GifticonImagePickerModule(),
       ocrModule: GifticonOcrModule(),
       detector: GifticonDetectorModule(),
       aiParser: RemoteGifticonAiParser(
-        baseUrl: 'https://d42u-server.vercel.app/',
+        baseUrl: 'https://d42u-server.vercel.app',
       ),
     );
+
+    _storageService.init();
   }
 
   @override
@@ -66,6 +80,8 @@ class _GifticonDemoPageState extends State<GifticonDemoPage> {
   Future<void> _run() async {
     setState(() {
       _loading = true;
+      _saving = false;
+      _saved = false;
       _isGifticon = null;
       _parsedInfo = null;
       _statusText = '처리 중...';
@@ -87,7 +103,7 @@ class _GifticonDemoPageState extends State<GifticonDemoPage> {
         _selectedImage = File(output.pickedImage.path);
       });
 
-      if (!output.detection.isGifticon) {
+      if (!output.detection.isGifticon || output.parsedInfo == null) {
         setState(() {
           _isGifticon = false;
           _parsedInfo = null;
@@ -114,6 +130,48 @@ class _GifticonDemoPageState extends State<GifticonDemoPage> {
     }
   }
 
+  Future<void> _saveGifticon() async {
+    if (_selectedImage == null || _parsedInfo == null) return;
+
+    setState(() {
+      _saving = true;
+    });
+
+    try {
+      await _storageService.saveGifticon(
+        sourceImagePath: _selectedImage!.path,
+        info: _parsedInfo!,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _saved = true;
+        _statusText = '저장 완료';
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('기프티콘이 저장되었습니다.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('저장 실패: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+        });
+      }
+    }
+  }
+
   Widget _buildInfoTile(String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -127,7 +185,9 @@ class _GifticonDemoPageState extends State<GifticonDemoPage> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
-          Expanded(child: Text(value)),
+          Expanded(
+            child: Text(value),
+          ),
         ],
       ),
     );
@@ -143,8 +203,26 @@ class _GifticonDemoPageState extends State<GifticonDemoPage> {
 
   @override
   Widget build(BuildContext context) {
+    final canSave =
+        _isGifticon == true && _parsedInfo != null && _selectedImage != null;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Gifticon MVP Demo')),
+      appBar: AppBar(
+        title: const Text('Don\'t Forget to USE'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.inventory_2_outlined),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const GifticonListPage(),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -180,8 +258,14 @@ class _GifticonDemoPageState extends State<GifticonDemoPage> {
                               // _buildInfoTile('판별 결과', _statusText),
                               _buildInfoTile('교환처', _parsedInfo?.merchantName ?? '-'),
                               _buildInfoTile('상품 이름', _parsedInfo?.itemName ?? '-'),
-                              _buildInfoTile('유효기간', _formatDate(_parsedInfo?.expiresAt)),
-                              _buildInfoTile('쿠폰 번호', _parsedInfo?.couponNumber ?? '-'),
+                              _buildInfoTile(
+                                '유효기간',
+                                _formatDate(_parsedInfo?.expiresAt),
+                              ),
+                              _buildInfoTile(
+                                '쿠폰 번호',
+                                _parsedInfo?.couponNumber ?? '-',
+                              ),
                             ] else ...[
                               _buildInfoTile('판별 결과', _statusText),
                             ],
@@ -189,6 +273,17 @@ class _GifticonDemoPageState extends State<GifticonDemoPage> {
                         ),
                       ),
                     ),
+                    if (canSave) ...[
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: (_saving || _saved) ? null : _saveGifticon,
+                        child: Text(
+                          _saved
+                              ? '저장됨'
+                              : (_saving ? '저장 중...' : '저장하기'),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
