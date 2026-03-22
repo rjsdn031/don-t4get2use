@@ -36,6 +36,41 @@ class GifticonDetectionResult {
   });
 }
 
+class ParsedGifticonOcrPayload {
+  final String rawText;
+  final List<String> cleanedLines;
+  final List<String> candidateBrands;
+  final List<String> candidateItems;
+  final List<String> candidateCouponNumbers;
+  final List<DateTime> candidateDates;
+  final Map<String, String> labeledFields;
+
+  const ParsedGifticonOcrPayload({
+    required this.rawText,
+    required this.cleanedLines,
+    required this.candidateBrands,
+    required this.candidateItems,
+    required this.candidateCouponNumbers,
+    required this.candidateDates,
+    required this.labeledFields,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'rawText': rawText,
+    'cleanedLines': cleanedLines,
+    'candidateBrands': candidateBrands,
+    'candidateItems': candidateItems,
+    'candidateCouponNumbers': candidateCouponNumbers,
+    'candidateDates': candidateDates
+        .map((date) => date.toIso8601String())
+        .toList(),
+    'labeledFields': labeledFields,
+  };
+
+  @override
+  String toString() => jsonEncode(toJson());
+}
+
 class GifticonInfo {
   final String? merchantName;
   final String? itemName;
@@ -51,6 +86,21 @@ class GifticonInfo {
     required this.rawText,
   });
 
+  factory GifticonInfo.fromJson(
+      Map<String, dynamic> json, {
+        required String rawText,
+      }) {
+    return GifticonInfo(
+      merchantName: json['merchantName'] as String?,
+      itemName: json['itemName'] as String?,
+      expiresAt: json['expiresAt'] != null
+          ? DateTime.tryParse(json['expiresAt'] as String)
+          : null,
+      couponNumber: json['couponNumber'] as String?,
+      rawText: rawText,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     'merchantName': merchantName,
     'itemName': itemName,
@@ -58,36 +108,4 @@ class GifticonInfo {
     'couponNumber': couponNumber,
     'rawText': rawText,
   };
-
-  @override
-  String toString() => jsonEncode(toJson());
-}
-
-class GifticonSavePayload {
-  final String ownerUserId;
-  final String imagePath;
-  final GifticonInfo info;
-
-  const GifticonSavePayload({
-    required this.ownerUserId,
-    required this.imagePath,
-    required this.info,
-  });
-}
-
-class GifticonSaveResponse {
-  final String id;
-  final String imageUrl;
-
-  const GifticonSaveResponse({
-    required this.id,
-    required this.imageUrl,
-  });
-
-  factory GifticonSaveResponse.fromJson(Map<String, dynamic> json) {
-    return GifticonSaveResponse(
-      id: json['id'] as String,
-      imageUrl: json['imageUrl'] as String,
-    );
-  }
 }

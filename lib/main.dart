@@ -3,11 +3,10 @@ import 'package:flutter/material.dart';
 
 import 'models/gifticon_models.dart';
 import 'modules/gifticon_detector_module.dart';
-import 'modules/gifticon_parser_module.dart';
-import 'modules/gifticon_upload_module.dart';
 import 'modules/image_picker_module.dart';
 import 'modules/ocr_module.dart';
 import 'services/gifticon_pipeline_service.dart';
+import 'modules/remote_gifticon_ai_parser.dart';
 
 void main() {
   runApp(const MyApp());
@@ -19,7 +18,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Gifticon MVP',
+      title: 'Don\'t Forget to Use!',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.orange),
         useMaterial3: true,
@@ -52,9 +51,8 @@ class _GifticonDemoPageState extends State<GifticonDemoPage> {
       imagePicker: GifticonImagePickerModule(),
       ocrModule: GifticonOcrModule(),
       detector: GifticonDetectorModule(),
-      parser: GifticonParserModule(),
-      uploadModule: GifticonUploadModule(
-        baseUrl: 'https://your-server.example.com',
+      aiParser: RemoteGifticonAiParser(
+        baseUrl: 'https://d42u-server.vercel.app/',
       ),
     );
   }
@@ -75,7 +73,7 @@ class _GifticonDemoPageState extends State<GifticonDemoPage> {
     });
 
     try {
-      final output = await _pipeline.run(ownerUserId: 'user_001');
+      final output = await _pipeline.run();
 
       if (output == null) {
         setState(() {
