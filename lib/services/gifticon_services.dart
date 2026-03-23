@@ -4,6 +4,7 @@ import '../modules/android_latest_image_finder_module.dart';
 import '../modules/gifticon_detector_module.dart';
 import '../modules/image_picker_module.dart';
 import '../modules/ocr_module.dart';
+import '../modules/barcode_module.dart';
 import 'gifticon_notification_service.dart';
 import 'gifticon_pipeline_service.dart';
 import 'gifticon_storage_service.dart';
@@ -38,6 +39,7 @@ class GifticonServices {
     final pipelineService = GifticonPipelineService(
       imagePicker: GifticonImagePickerModule(),
       ocrModule: GifticonOcrModule(),
+      barcodeModule: GifticonBarcodeModule(),
       detector: GifticonDetectorModule(),
     );
 

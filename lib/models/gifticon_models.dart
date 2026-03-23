@@ -61,3 +61,17 @@ class GifticonInfo {
     'rawText': rawText,
   };
 }
+
+class BarcodeDetectionResult {
+  final bool hasBarcodeLike;
+  final bool hasQrLike;
+  final List<String> rawValues;
+
+  const BarcodeDetectionResult({
+    required this.hasBarcodeLike,
+    required this.hasQrLike,
+    required this.rawValues,
+  });
+
+  bool get hasStrongCodeSignal => hasBarcodeLike || hasQrLike;
+}

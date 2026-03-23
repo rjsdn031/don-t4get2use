@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../models/gifticon_models.dart';
+import '../modules/barcode_module.dart';
 import '../modules/gifticon_detector_module.dart';
 import '../modules/image_picker_module.dart';
 import '../modules/ocr_module.dart';
@@ -43,6 +44,7 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
     _pipeline = GifticonPipelineService(
       imagePicker: GifticonImagePickerModule(),
       ocrModule: GifticonOcrModule(),
+      barcodeModule: GifticonBarcodeModule(),
       detector: GifticonDetectorModule(),
     );
 
