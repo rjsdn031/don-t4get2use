@@ -1,16 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../models/gifticon_models.dart';
 import '../modules/gifticon_detector_module.dart';
 import '../modules/image_picker_module.dart';
 import '../modules/ocr_module.dart';
-import '../services/gifticon_notification_service.dart';
+import '../modules/remote_gifticon_ai_parser.dart';
 import '../services/gifticon_pipeline_service.dart';
 import '../services/gifticon_storage_service.dart';
-import 'gifticon_list_page.dart';
 
 class GifticonAnalysisPage extends StatefulWidget {
   const GifticonAnalysisPage({super.key});
@@ -21,6 +19,7 @@ class GifticonAnalysisPage extends StatefulWidget {
 
 class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
   late final GifticonPipelineService _pipeline;
+  late final RemoteGifticonAiParser _aiParser;
   final GifticonStorageService _storageService = GifticonStorageService();
 
   bool _loading = false;
@@ -35,17 +34,11 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
   @override
   void initState() {
     super.initState();
-    _initPipeline();
+    _initPage();
   }
 
-  Future<void> _initPipeline() async {
-    final storageService = GifticonStorageService();
-    await storageService.init();
-
-    final notificationService = GifticonNotificationService(
-      FlutterLocalNotificationsPlugin(),
-    );
-    await notificationService.init();
+  Future<void> _initPage() async {
+    await _storageService.init();
 
     _pipeline = GifticonPipelineService(
       imagePicker: GifticonImagePickerModule(),
@@ -53,6 +46,11 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
       detector: GifticonDetectorModule(),
     );
 
+    _aiParser = RemoteGifticonAiParser(
+      baseUrl: 'https://d42u-server.vercel.app',
+    );
+
+    if (!mounted) return;
     setState(() {});
   }
 
@@ -88,7 +86,7 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
         _selectedImage = File(output.image.path);
       });
 
-      if (!output.detection.isGifticon) {
+      if (!output.isGifticon) {
         setState(() {
           _isGifticon = false;
           _parsedInfo = null;
@@ -99,7 +97,16 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
 
       setState(() {
         _isGifticon = true;
-        _statusText = '기프티콘입니다.';
+        _statusText = '기프티콘 인식 완료. 상세 정보를 분석 중입니다...';
+      });
+
+      final parsedInfo = await _aiParser.parse(
+        rawText: output.ocr.rawText,
+      );
+
+      setState(() {
+        _parsedInfo = parsedInfo;
+        _statusText = '기프티콘 분석이 완료되었습니다.';
       });
     } catch (e) {
       setState(() {
@@ -139,6 +146,8 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
           content: Text('기프티콘이 저장되었습니다.'),
         ),
       );
+
+      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
 
@@ -190,20 +199,7 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Don\'t Forget to USE'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.inventory_2_outlined),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const GifticonListPage(),
-                ),
-              );
-            },
-          ),
-        ],
+        title: const Text('기프티콘 분석'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),

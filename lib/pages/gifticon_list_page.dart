@@ -9,6 +9,7 @@ import '../modules/screenshot_event_listener_module.dart';
 import '../services/gifticon_services.dart';
 import '../services/gifticon_storage_service.dart';
 import '../services/screenshot_automation_service.dart';
+import 'gifticon_analysis_page.dart';
 import 'gifticon_detail_page.dart';
 
 class GifticonListPage extends StatefulWidget {
@@ -55,7 +56,7 @@ class _GifticonListPageState extends State<GifticonListPage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _appLifecycleState = state;
 
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.resumed && _isInitialized) {
       _loadItems();
     }
   }
@@ -220,6 +221,18 @@ class _GifticonListPageState extends State<GifticonListPage>
     );
   }
 
+  Future<void> _openAnalysisPage() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const GifticonAnalysisPage(),
+      ),
+    );
+
+    if (!mounted) return;
+    await _loadItems();
+  }
+
   String _formatDate(DateTime? date) {
     if (date == null) return '-';
     final y = date.year.toString().padLeft(4, '0');
@@ -252,20 +265,57 @@ class _GifticonListPageState extends State<GifticonListPage>
     }
   }
 
+  Widget _buildAddCard() {
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: _openAnalysisPage,
+        child: const Padding(
+          padding: EdgeInsets.all(16),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                child: Icon(Icons.add),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '기프티콘 추가',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text('기프티콘 직접 추가하기'),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('저장된 기프티콘'),
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _items.isEmpty
-          ? const Center(
+    final listSection = _loading
+        ? const Center(child: CircularProgressIndicator())
+        : _items.isEmpty
+        ? const Expanded(
+      child: Center(
         child: Text('저장된 기프티콘이 없습니다.'),
-      )
-          : ListView.separated(
-        padding: const EdgeInsets.all(16),
+      ),
+    )
+        : Expanded(
+      child: ListView.separated(
+        padding: const EdgeInsets.only(top: 12),
         itemCount: _items.length,
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
@@ -314,6 +364,25 @@ class _GifticonListPageState extends State<GifticonListPage>
             ),
           );
         },
+      ),
+    );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('꺼내먹어요'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            listSection,
+            // _buildAddCard(),
+          ],
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _openAnalysisPage,
+        child: const Icon(Icons.add),
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
