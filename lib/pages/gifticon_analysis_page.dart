@@ -65,7 +65,7 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
     });
 
     try {
-      final output = await _pipeline.run();
+      final output = await _pipeline.runFromGallery();
 
       if (output == null) {
         setState(() {
@@ -76,7 +76,7 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
       }
 
       setState(() {
-        _selectedImage = File(output.pickedImage.path);
+        _selectedImage = File(output.image.path);
       });
 
       if (!output.detection.isGifticon || output.parsedInfo == null) {

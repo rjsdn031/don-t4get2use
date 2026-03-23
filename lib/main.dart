@@ -1,3 +1,4 @@
+import 'package:dont4get2use2/pages/gifticon_test_page.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -21,7 +22,8 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.orange),
         useMaterial3: true,
       ),
-      home: const GifticonAnalysisPage(),
+      // home: const GifticonAnalysisPage(),
+      home: const GifticonTestPage(),
     );
   }
 }

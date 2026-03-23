@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/gifticon_models.dart';
+import '../models/local_image_data.dart';
 import '../modules/gifticon_detector_module.dart';
 import '../modules/image_picker_module.dart';
 import '../modules/ocr_module.dart';
@@ -19,16 +20,29 @@ class GifticonPipelineService {
   final GifticonDetectorModule detector;
   final RemoteGifticonAiParser aiParser;
 
-  Future<GifticonPipelineOutput?> run() async {
+  Future<GifticonPipelineOutput?> runFromGallery() async {
     final picked = await imagePicker.pickFromGallery();
     if (picked == null) {
       debugPrint('[Gifticon] image pick cancelled');
       return null;
     }
 
-    debugPrint('[Gifticon] picked image: ${picked.path}');
+    return _analyzeImage(picked);
+  }
 
-    final ocr = await ocrModule.recognizeText(picked.path);
+  Future<GifticonPipelineOutput> runFromImagePath(String imagePath) async {
+    final image = LocalImageData(path: imagePath);
+    return _analyzeImage(image);
+  }
+
+  Future<GifticonPipelineOutput> runFromImage(LocalImageData image) async {
+    return _analyzeImage(image);
+  }
+
+  Future<GifticonPipelineOutput> _analyzeImage(LocalImageData image) async {
+    debugPrint('[Gifticon] picked image: ${image.path}');
+
+    final ocr = await ocrModule.recognizeText(image.path);
     debugPrint('[Gifticon][OCR] ${ocr.rawText}');
 
     final detection = detector.detect(ocr);
@@ -39,7 +53,7 @@ class GifticonPipelineService {
     if (!detection.isGifticon) {
       debugPrint('[Gifticon] detector rejected image');
       return GifticonPipelineOutput(
-        pickedImage: picked,
+        image: image,
         detection: detection,
         parsedInfo: null,
       );
@@ -52,7 +66,7 @@ class GifticonPipelineService {
     debugPrint('[Gifticon][ParsedInfo] $parsedInfo');
 
     return GifticonPipelineOutput(
-      pickedImage: picked,
+      image: image,
       detection: detection,
       parsedInfo: parsedInfo,
     );
@@ -60,12 +74,12 @@ class GifticonPipelineService {
 }
 
 class GifticonPipelineOutput {
-  final PickedImageData pickedImage;
+  final LocalImageData image;
   final GifticonDetectionResult detection;
   final GifticonInfo? parsedInfo;
 
   const GifticonPipelineOutput({
-    required this.pickedImage,
+    required this.image,
     required this.detection,
     required this.parsedInfo,
   });

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
-import '../models/gifticon_models.dart';
+
+import '../models/local_image_data.dart';
 
 class GifticonImagePickerModule {
   GifticonImagePickerModule({ImagePicker? picker})
@@ -8,7 +9,7 @@ class GifticonImagePickerModule {
 
   final ImagePicker _picker;
 
-  Future<PickedImageData?> pickFromGallery() async {
+  Future<LocalImageData?> pickFromGallery() async {
     final XFile? file = await _picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 100,
@@ -19,7 +20,7 @@ class GifticonImagePickerModule {
     final ioFile = File(file.path);
     final size = await ioFile.length();
 
-    return PickedImageData(
+    return LocalImageData(
       path: file.path,
       fileName: file.name,
       sizeBytes: size,
