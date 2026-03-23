@@ -4,22 +4,24 @@ import '../modules/android_latest_image_finder_module.dart';
 import '../modules/gifticon_detector_module.dart';
 import '../modules/image_picker_module.dart';
 import '../modules/ocr_module.dart';
-import '../modules/remote_gifticon_ai_parser.dart';
 import 'gifticon_notification_service.dart';
 import 'gifticon_pipeline_service.dart';
 import 'gifticon_storage_service.dart';
+import 'gifticon_work_service.dart';
 import 'screenshot_automation_service.dart';
 
 class GifticonServices {
   final GifticonStorageService storageService;
   final GifticonNotificationService notificationService;
   final GifticonPipelineService pipelineService;
+  final GifticonWorkService workService;
   final ScreenshotAutomationService automationService;
 
   const GifticonServices({
     required this.storageService,
     required this.notificationService,
     required this.pipelineService,
+    required this.workService,
     required this.automationService,
   });
 
@@ -37,22 +39,21 @@ class GifticonServices {
       imagePicker: GifticonImagePickerModule(),
       ocrModule: GifticonOcrModule(),
       detector: GifticonDetectorModule(),
-      aiParser: RemoteGifticonAiParser(
-        baseUrl: 'https://d42u-server.vercel.app',
-      ),
-      storageService: storageService,
-      notificationService: notificationService,
     );
+
+    final workService = GifticonWorkService();
 
     final automationService = ScreenshotAutomationService(
       latestImageFinder: AndroidLatestImageFinderModule(),
       pipeline: pipelineService,
+      workService: workService,
     );
 
     return GifticonServices(
       storageService: storageService,
       notificationService: notificationService,
       pipelineService: pipelineService,
+      workService: workService,
       automationService: automationService,
     );
   }

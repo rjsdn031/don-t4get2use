@@ -7,7 +7,6 @@ import '../models/gifticon_models.dart';
 import '../modules/gifticon_detector_module.dart';
 import '../modules/image_picker_module.dart';
 import '../modules/ocr_module.dart';
-import '../modules/remote_gifticon_ai_parser.dart';
 import '../services/gifticon_notification_service.dart';
 import '../services/gifticon_pipeline_service.dart';
 import '../services/gifticon_storage_service.dart';
@@ -52,11 +51,6 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
       imagePicker: GifticonImagePickerModule(),
       ocrModule: GifticonOcrModule(),
       detector: GifticonDetectorModule(),
-      aiParser: RemoteGifticonAiParser(
-        baseUrl: 'https://d42u-server.vercel.app',
-      ),
-      storageService: storageService,
-      notificationService: notificationService,
     );
 
     setState(() {});
@@ -94,7 +88,7 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
         _selectedImage = File(output.image.path);
       });
 
-      if (!output.detection.isGifticon || output.parsedInfo == null) {
+      if (!output.detection.isGifticon) {
         setState(() {
           _isGifticon = false;
           _parsedInfo = null;
@@ -105,7 +99,6 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
 
       setState(() {
         _isGifticon = true;
-        _parsedInfo = output.parsedInfo;
         _statusText = '기프티콘입니다.';
       });
     } catch (e) {

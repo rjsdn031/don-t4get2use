@@ -1,6 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-import '../models/gifticon_models.dart';
 import '../models/stored_gifticon.dart';
 
 class GifticonNotificationService {
@@ -59,13 +58,6 @@ class GifticonNotificationService {
     );
   }
 
-  Future<void> showSavedNotificationFromInfo(GifticonInfo info) async {
-    await _showSavedNotification(
-      merchantName: info.merchantName,
-      itemName: info.itemName,
-    );
-  }
-
   Future<void> showSavedNotificationFromStored(StoredGifticon stored) async {
     await _showSavedNotification(
       merchantName: stored.merchantName,
@@ -119,9 +111,9 @@ class GifticonNotificationService {
     final hasMerchant = merchant != null && merchant.isNotEmpty;
 
     if (hasMerchant) {
-      return '$merchant $resolvedItem이 보관함에 저장되었습니다.';
+      return '$merchant $resolvedItem(이)가 보관함에 저장되었습니다.';
     }
 
-    return '$resolvedItem이 보관함에 저장되었습니다.';
+    return '$resolvedItem(이)가 보관함에 저장되었습니다.';
   }
 }

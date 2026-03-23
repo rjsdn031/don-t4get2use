@@ -81,59 +81,48 @@ class _GifticonTestPageState extends State<GifticonTestPage> {
     final output = _lastOutput;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('기프티콘 테스트'),
-      ),
+      appBar: AppBar(title: const Text('기프티콘 테스트')),
       body: _isInitializing
           ? const Center(child: CircularProgressIndicator())
           : Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(_status),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _isRunning ? null : _runFromGallery,
-              child: const Text('갤러리에서 테스트'),
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: _isRunning ? null : _runLatestScreenshot,
-              child: const Text('최근 스크린샷 테스트'),
-            ),
-            const SizedBox(height: 24),
-            if (_isRunning) const LinearProgressIndicator(),
-            const SizedBox(height: 24),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Text(
-                  output == null
-                      ? '아직 실행 결과가 없습니다.'
-                      : '''
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(_status),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _isRunning ? null : _runFromGallery,
+                    child: const Text('갤러리에서 테스트'),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: _isRunning ? null : _runLatestScreenshot,
+                    child: const Text('최근 스크린샷 테스트'),
+                  ),
+                  const SizedBox(height: 24),
+                  if (_isRunning) const LinearProgressIndicator(),
+                  const SizedBox(height: 24),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Text(
+                        output == null
+                            ? '아직 실행 결과가 없습니다.'
+                            : '''
 isGifticon: ${output.isGifticon}
-isSaved: ${output.isSaved}
 score: ${output.detection.score}
 matchedSignals: ${output.detection.matchedSignals.join(', ')}
-
-merchantName: ${output.parsedInfo?.merchantName}
-itemName: ${output.parsedInfo?.itemName}
-expiresAt: ${output.parsedInfo?.expiresAt}
-couponNumber: ${output.parsedInfo?.couponNumber}
-
 imagePath: ${output.image.path}
-storedId: ${output.storedGifticon?.id}
-storedImagePath: ${output.storedGifticon?.imagePath}
 
 rawText:
 ${output.ocr.rawText}
 ''',
-                ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-      ),
     );
   }
 }

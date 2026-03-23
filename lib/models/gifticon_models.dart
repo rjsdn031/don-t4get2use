@@ -1,4 +1,3 @@
-import 'dart:convert';
 
 class OcrResult {
   final String rawText;

@@ -18,7 +18,8 @@ class GifticonListPage extends StatefulWidget {
   State<GifticonListPage> createState() => _GifticonListPageState();
 }
 
-class _GifticonListPageState extends State<GifticonListPage> {
+class _GifticonListPageState extends State<GifticonListPage>
+    with WidgetsBindingObserver {
   late final GifticonServices _services;
   late final GifticonStorageService _storageService;
   late final ScreenshotAutomationService _automationService;
@@ -26,23 +27,37 @@ class _GifticonListPageState extends State<GifticonListPage> {
 
   StreamSubscription<dynamic>? _screenshotSubscription;
 
+  AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
+
   bool _loading = true;
   bool _isListeningEnabled = true;
   bool _isListeningActive = false;
-  bool _isAutoSaving = false;
+  bool _isProcessingScreenshot = false;
+  bool _isInitialized = false;
 
   List<StoredGifticon> _items = const [];
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initialize();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _screenshotSubscription?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appLifecycleState = state;
+
+    if (state == AppLifecycleState.resumed) {
+      _loadItems();
+    }
   }
 
   Future<void> _ensureNotificationPermission() async {
@@ -63,6 +78,9 @@ class _GifticonListPageState extends State<GifticonListPage> {
       _automationService = _services.automationService;
       _screenshotEventListener = ScreenshotEventListenerModule();
 
+      if (!mounted) return;
+
+      _isInitialized = true;
       await _loadItems();
 
       if (_isListeningEnabled) {
@@ -108,36 +126,36 @@ class _GifticonListPageState extends State<GifticonListPage> {
 
     _screenshotSubscription = _screenshotEventListener.events.listen(
           (event) async {
-        if (!_isListeningEnabled || _isAutoSaving) return;
+        if (!_isListeningEnabled || _isProcessingScreenshot) return;
 
-        _isAutoSaving = true;
+        _isProcessingScreenshot = true;
 
         try {
-          await Future<void>.delayed(const Duration(milliseconds: 500));
+          final isBackground = _appLifecycleState != AppLifecycleState.resumed;
 
-          final output = await _automationService.handleScreenshotDetected();
+          final output = await _automationService.handleScreenshotDetected(
+            isBackground: isBackground,
+          );
+
           if (output == null) return;
-          if (!output.isSaved) return;
-
-          await _loadItems();
+          if (!output.isGifticon) return;
 
           if (!mounted) return;
 
-          final saved = output.storedGifticon;
-          final itemName = saved?.itemName?.trim();
-          final resolvedName =
-          (itemName == null || itemName.isEmpty) ? '기프티콘' : itemName;
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$resolvedName 저장 완료')),
-          );
+          if (!isBackground) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('기프티콘을 인식했고 저장 작업을 시작했습니다.'),
+              ),
+            );
+          }
         } catch (e) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('자동 저장 중 오류가 발생했습니다: $e')),
+            SnackBar(content: Text('스크린샷 처리 중 오류가 발생했습니다: $e')),
           );
         } finally {
-          _isAutoSaving = false;
+          _isProcessingScreenshot = false;
         }
       },
       onError: (error) {
