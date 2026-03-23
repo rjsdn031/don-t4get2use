@@ -40,7 +40,7 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
       ocrModule: GifticonOcrModule(),
       detector: GifticonDetectorModule(),
       aiParser: RemoteGifticonAiParser(
-        baseUrl: 'https://d42u-server.vercel.app',
+        baseUrl: 'https://d42u-server.vercel.app'
       ),
     );
 

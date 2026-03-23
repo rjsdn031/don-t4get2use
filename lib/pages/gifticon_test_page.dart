@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -9,9 +10,11 @@ import '../modules/image_picker_module.dart';
 import '../modules/gifticon_detector_module.dart';
 import '../modules/ocr_module.dart';
 import '../modules/remote_gifticon_ai_parser.dart';
+import '../modules/screenshot_event_listener_module.dart';
 
 import '../services/gifticon_pipeline_service.dart';
 import '../models/local_image_data.dart';
+import '../services/screenshot_automation_service.dart';
 
 class GifticonTestPage extends StatefulWidget {
   const GifticonTestPage({super.key});
@@ -23,6 +26,11 @@ class GifticonTestPage extends StatefulWidget {
 class _GifticonTestPageState extends State<GifticonTestPage> {
   late final GifticonPipelineService _pipeline;
   late final LatestImageFinderModule _latestImageFinder;
+  late final ScreenshotAutomationService _automationService;
+  late final ScreenshotEventListenerModule _screenshotEventListener;
+
+  StreamSubscription<dynamic>? _screenshotSubscription;
+  bool _isListeningScreenshotEvents = false;
 
   LocalImageData? _latestImage;
   GifticonPipelineOutput? _output;
@@ -44,6 +52,13 @@ class _GifticonTestPageState extends State<GifticonTestPage> {
     _latestImage = null;
 
     _latestImageFinder = AndroidLatestImageFinderModule();
+
+    _automationService = ScreenshotAutomationService(
+      latestImageFinder: _latestImageFinder,
+      pipeline: _pipeline,
+    );
+
+    _screenshotEventListener = ScreenshotEventListenerModule();
   }
 
   void _appendLog(String msg) {
@@ -60,7 +75,7 @@ class _GifticonTestPageState extends State<GifticonTestPage> {
       _appendLog('❌ media permission denied');
       return;
     }
-    
+
     _appendLog('--- checkLatestImage ---');
 
     final latest = await _latestImageFinder.findLatestImage();
@@ -151,6 +166,113 @@ class _GifticonTestPageState extends State<GifticonTestPage> {
     });
   }
 
+  Future<void> _runAutomationOnce() async {
+    final granted = await _ensureMediaPermission();
+    _appendLog('media permission granted: $granted');
+    if (!granted) {
+      _appendLog('❌ media permission denied');
+      return;
+    }
+
+    _appendLog('--- runAutomationOnce ---');
+
+    final output = await _automationService.handleScreenshotDetected();
+
+    if (output == null) {
+      _appendLog('❌ automation returned null');
+      return;
+    }
+
+    _appendLog('✅ automation completed');
+    _appendLog('image path: ${output.image.path}');
+    _appendLog('isGifticon: ${output.detection.isGifticon}');
+    _appendLog('score: ${output.detection.score}');
+    _appendLog('matched: ${output.detection.matchedSignals.join(', ')}');
+
+    if (output.parsedInfo != null) {
+      _appendLog('parsed: ${output.parsedInfo}');
+    } else {
+      _appendLog('parsed: null');
+    }
+
+    setState(() {
+      _latestImage = output.image;
+      _output = output;
+    });
+  }
+
+  Future<void> _startListeningScreenshotEvents() async {
+    if (_isListeningScreenshotEvents) {
+      _appendLog('already listening screenshot events');
+      return;
+    }
+
+    final granted = await _ensureMediaPermission();
+    _appendLog('media permission granted: $granted');
+    if (!granted) {
+      _appendLog('❌ media permission denied');
+      return;
+    }
+
+    _appendLog('--- startListeningScreenshotEvents ---');
+
+    _screenshotSubscription = _screenshotEventListener.events.listen(
+          (event) async {
+        _appendLog('📸 screenshot event: $event');
+
+        await Future.delayed(const Duration(milliseconds: 500));
+
+        final output = await _automationService.handleScreenshotDetected();
+        if (output == null) {
+          _appendLog('automation ignored or returned null');
+          return;
+        }
+
+        _appendLog('✅ auto automation completed');
+        _appendLog('image path: ${output.image.path}');
+        _appendLog('isGifticon: ${output.detection.isGifticon}');
+        _appendLog('score: ${output.detection.score}');
+        _appendLog('matched: ${output.detection.matchedSignals.join(', ')}');
+
+        if (output.parsedInfo != null) {
+          _appendLog('parsed: ${output.parsedInfo}');
+        }
+
+        if (!mounted) return;
+        setState(() {
+          _latestImage = output.image;
+          _output = output;
+        });
+      },
+      onError: (error) {
+        _appendLog('❌ screenshot event error: $error');
+      },
+    );
+
+    setState(() {
+      _isListeningScreenshotEvents = true;
+    });
+
+    _appendLog('✅ screenshot event listening started');
+  }
+
+  Future<void> _stopListeningScreenshotEvents() async {
+    await _screenshotSubscription?.cancel();
+    _screenshotSubscription = null;
+
+    setState(() {
+      _isListeningScreenshotEvents = false;
+    });
+
+    _appendLog('🛑 screenshot event listening stopped');
+  }
+
+  @override
+  void dispose() {
+    _screenshotSubscription?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -177,6 +299,18 @@ class _GifticonTestPageState extends State<GifticonTestPage> {
                 ElevatedButton(
                   onPressed: _pickFromGallery,
                   child: const Text('3. 갤러리 선택 분석'),
+                ),
+                ElevatedButton(
+                  onPressed: _runAutomationOnce,
+                  child: const Text('4. 자동화 흐름 1회 실행'),
+                ),
+                ElevatedButton(
+                  onPressed: _startListeningScreenshotEvents,
+                  child: const Text('5. 스크린샷 이벤트 수신 시작'),
+                ),
+                ElevatedButton(
+                  onPressed: _stopListeningScreenshotEvents,
+                  child: const Text('6. 스크린샷 이벤트 수신 중지'),
                 ),
               ],
             ),

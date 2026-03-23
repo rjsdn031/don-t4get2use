@@ -1,8 +1,8 @@
+import 'package:dont4get2use2/pages/gifticon_list_page.dart';
 import 'package:dont4get2use2/pages/gifticon_test_page.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
-import 'pages/gifticon_analysis_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,8 +22,8 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.orange),
         useMaterial3: true,
       ),
-      // home: const GifticonAnalysisPage(),
-      home: const GifticonTestPage(),
+      home: const GifticonListPage(),
+      // home: const GifticonTestPage(),
     );
   }
 }

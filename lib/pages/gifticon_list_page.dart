@@ -1,9 +1,20 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../models/stored_gifticon.dart';
+import '../modules/android_latest_image_finder_module.dart';
+import '../modules/gifticon_detector_module.dart';
+import '../modules/image_picker_module.dart';
+import '../modules/latest_image_finder_module.dart';
+import '../modules/ocr_module.dart';
+import '../modules/remote_gifticon_ai_parser.dart';
+import '../modules/screenshot_event_listener_module.dart';
+import '../services/gifticon_pipeline_service.dart';
 import '../services/gifticon_storage_service.dart';
+import '../services/screenshot_automation_service.dart';
 import 'gifticon_detail_page.dart';
 
 class GifticonListPage extends StatefulWidget {
@@ -16,13 +27,161 @@ class GifticonListPage extends StatefulWidget {
 class _GifticonListPageState extends State<GifticonListPage> {
   final GifticonStorageService _storageService = GifticonStorageService();
 
+  late final GifticonPipelineService _pipeline;
+  late final LatestImageFinderModule _latestImageFinder;
+  late final ScreenshotAutomationService _automationService;
+  late final ScreenshotEventListenerModule _screenshotEventListener;
+
+  StreamSubscription<dynamic>? _screenshotSubscription;
+
   bool _loading = true;
+  bool _isListeningEnabled = true;
+  bool _isListeningActive = false;
+  bool _isAutoSaving = false;
+
   List<StoredGifticon> _items = const [];
 
   @override
   void initState() {
     super.initState();
-    _loadItems();
+
+    _pipeline = GifticonPipelineService(
+      imagePicker: GifticonImagePickerModule(),
+      ocrModule: GifticonOcrModule(),
+      detector: GifticonDetectorModule(),
+      aiParser: RemoteGifticonAiParser(
+        baseUrl: 'https://d42u-server.vercel.app'
+      ),
+    );
+
+    _latestImageFinder = AndroidLatestImageFinderModule();
+
+    _automationService = ScreenshotAutomationService(
+      latestImageFinder: _latestImageFinder,
+      pipeline: _pipeline,
+    );
+
+    _screenshotEventListener = ScreenshotEventListenerModule();
+
+    _initPage();
+  }
+
+  @override
+  void dispose() {
+    _screenshotSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initPage() async {
+    await _loadItems();
+
+    if (_isListeningEnabled) {
+      await _startListeningScreenshotEvents();
+    }
+  }
+
+  Future<bool> _ensureMediaPermission() async {
+    if (!Platform.isAndroid) return true;
+
+    if (await Permission.photos.isGranted) return true;
+    if (await Permission.storage.isGranted) return true;
+
+    final photosStatus = await Permission.photos.request();
+    if (photosStatus.isGranted) return true;
+
+    final storageStatus = await Permission.storage.request();
+    return storageStatus.isGranted;
+  }
+
+  Future<void> _startListeningScreenshotEvents() async {
+    if (_isListeningActive) return;
+
+    final granted = await _ensureMediaPermission();
+    if (!granted) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('이미지 접근 권한이 필요합니다.')),
+      );
+      return;
+    }
+
+    _screenshotSubscription = _screenshotEventListener.events.listen(
+          (event) async {
+        if (!_isListeningEnabled || _isAutoSaving) return;
+
+        _isAutoSaving = true;
+
+        try {
+          await Future.delayed(const Duration(milliseconds: 500));
+
+          final output = await _automationService.handleScreenshotDetected();
+          if (output == null) return;
+          if (!output.detection.isGifticon) return;
+          if (output.parsedInfo == null) return;
+
+          await _storageService.init();
+
+          final saved = await _storageService.saveGifticon(
+            sourceImagePath: output.image.path,
+            info: output.parsedInfo!,
+          );
+
+          await _loadItems();
+
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '${saved.itemName ?? '기프티콘'}이(가) 자동 저장되었습니다.',
+              ),
+            ),
+          );
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('자동 저장 중 오류가 발생했습니다: $e')),
+          );
+        } finally {
+          _isAutoSaving = false;
+        }
+      },
+      onError: (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('스크린샷 이벤트 수신 오류: $error')),
+        );
+      },
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _isListeningActive = true;
+    });
+  }
+
+  Future<void> _stopListeningScreenshotEvents() async {
+    await _screenshotSubscription?.cancel();
+    _screenshotSubscription = null;
+
+    if (!mounted) return;
+    setState(() {
+      _isListeningActive = false;
+    });
+  }
+
+  Future<void> _toggleListening(bool value) async {
+    if (value) {
+      setState(() {
+        _isListeningEnabled = true;
+      });
+      await _startListeningScreenshotEvents();
+    } else {
+      await _stopListeningScreenshotEvents();
+      if (!mounted) return;
+      setState(() {
+        _isListeningEnabled = false;
+      });
+    }
   }
 
   Future<void> _loadItems() async {
@@ -142,6 +301,26 @@ class _GifticonListPageState extends State<GifticonListPage> {
             ),
           );
         },
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _isListeningActive
+                      ? '스크린샷 자동 감지 켜짐'
+                      : '스크린샷 자동 감지 꺼짐',
+                ),
+              ),
+              Switch(
+                value: _isListeningEnabled,
+                onChanged: _toggleListening,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

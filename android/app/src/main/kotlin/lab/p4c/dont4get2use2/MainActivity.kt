@@ -11,16 +11,25 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
+import io.flutter.plugin.common.EventChannel
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "gifticon/latest_image_finder"
+    private val METHOD_CHANNEL = "gifticon/latest_image_finder"
+    private val EVENT_CHANNEL = "gifticon/screenshot_events"
+
+    private var eventSink: EventChannel.EventSink? = null
+    private var screenshotObserver: ContentObserver? = null
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            CHANNEL
+            METHOD_CHANNEL
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "findLatestImage" -> {
@@ -28,17 +37,27 @@ class MainActivity : FlutterActivity() {
                         val latest = findLatestScreenshot()
                         result.success(latest)
                     } catch (e: Exception) {
-                        result.error(
-                            "LATEST_IMAGE_ERROR",
-                            e.message,
-                            null
-                        )
+                        result.error("LATEST_IMAGE_ERROR", e.message, null)
                     }
                 }
-
                 else -> result.notImplemented()
             }
         }
+
+        EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            EVENT_CHANNEL
+        ).setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                eventSink = events
+                registerScreenshotObserver()
+            }
+
+            override fun onCancel(arguments: Any?) {
+                unregisterScreenshotObserver()
+                eventSink = null
+            }
+        })
     }
 
     private fun findLatestScreenshot(): Map<String, Any?> {
@@ -166,5 +185,43 @@ class MainActivity : FlutterActivity() {
         } ?: return null
 
         return outFile.absolutePath
+    }
+
+    private fun registerScreenshotObserver() {
+        if (screenshotObserver != null) return
+
+        screenshotObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                super.onChange(selfChange)
+                notifyScreenshotEvent("media_changed")
+            }
+        }
+
+        applicationContext.contentResolver.registerContentObserver(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            true,
+            screenshotObserver!!
+        )
+    }
+
+    private fun unregisterScreenshotObserver() {
+        screenshotObserver?.let {
+            applicationContext.contentResolver.unregisterContentObserver(it)
+        }
+        screenshotObserver = null
+    }
+
+    private fun notifyScreenshotEvent(reason: String) {
+        try {
+            eventSink?.success(
+                mapOf(
+                    "type" to "screenshot_candidate",
+                    "reason" to reason,
+                    "timestamp" to System.currentTimeMillis()
+                )
+            )
+        } catch (e: Exception) {
+            Log.e("GifticonScreenshot", "failed to emit event: ${e.message}", e)
+        }
     }
 }

@@ -61,9 +61,14 @@ class GifticonPipelineService {
 
     debugPrint('[Gifticon] calling remote parser...');
 
-    final parsedInfo = await aiParser.parse(rawText: ocr.rawText);
-
-    debugPrint('[Gifticon][ParsedInfo] $parsedInfo');
+    GifticonInfo? parsedInfo;
+    try {
+      parsedInfo = await aiParser.parse(rawText: ocr.rawText);
+      debugPrint('[Gifticon][ParsedInfo] $parsedInfo');
+    } catch (e) {
+      debugPrint('[Gifticon][RemoteParser][Error] $e');
+      parsedInfo = null;
+    }
 
     return GifticonPipelineOutput(
       image: image,
