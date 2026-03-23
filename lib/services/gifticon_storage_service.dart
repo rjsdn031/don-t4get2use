@@ -12,13 +12,20 @@ class GifticonStorageService {
   final Uuid _uuid = const Uuid();
 
   Future<void> init() async {
-    await Hive.openBox(_boxName);
+    if (!Hive.isBoxOpen(_boxName)) {
+      await Hive.openBox(_boxName);
+    }
   }
 
   Future<StoredGifticon> saveGifticon({
     required String sourceImagePath,
     required GifticonInfo info,
   }) async {
+    final existing = _findDuplicate(info);
+    if (existing != null) {
+      return existing;
+    }
+
     final id = _uuid.v4();
     final savedImagePath = await _copyImageToAppDirectory(
       sourceImagePath: sourceImagePath,
@@ -64,6 +71,53 @@ class GifticonStorageService {
     }
 
     await box.delete(id);
+  }
+
+  StoredGifticon? _findDuplicate(GifticonInfo info) {
+    final items = getAllGifticons();
+
+    final normalizedCoupon = _normalize(info.couponNumber);
+    if (normalizedCoupon != null) {
+      for (final item in items) {
+        final existingCoupon = _normalize(item.couponNumber);
+        if (existingCoupon != null && existingCoupon == normalizedCoupon) {
+          return item;
+        }
+      }
+    }
+
+    final normalizedMerchant = _normalize(info.merchantName);
+    final normalizedItem = _normalize(info.itemName);
+    final normalizedExpiresAt = _normalizeDate(info.expiresAt);
+
+    for (final item in items) {
+      final sameMerchant =
+          _normalize(item.merchantName) == normalizedMerchant;
+      final sameItem =
+          _normalize(item.itemName) == normalizedItem;
+      final sameExpiresAt =
+          _normalizeDate(item.expiresAt) == normalizedExpiresAt;
+
+      if (sameMerchant && sameItem && sameExpiresAt) {
+        return item;
+      }
+    }
+
+    return null;
+  }
+
+  String? _normalize(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    return trimmed.toLowerCase();
+  }
+
+  String? _normalizeDate(DateTime? value) {
+    if (value == null) return null;
+    final y = value.year.toString().padLeft(4, '0');
+    final m = value.month.toString().padLeft(2, '0');
+    final d = value.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
   }
 
   Future<String> _copyImageToAppDirectory({

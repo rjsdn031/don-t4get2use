@@ -13,6 +13,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -30,10 +31,6 @@ android {
         versionName = flutter.versionName
     }
 
-    dependencies {
-        implementation("com.google.mlkit:text-recognition-korean:16.0.0")
-    }
-
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
@@ -41,6 +38,11 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    implementation("com.google.mlkit:text-recognition-korean:16.0.0")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 flutter {

@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../models/gifticon_models.dart';
 import '../modules/gifticon_detector_module.dart';
 import '../modules/image_picker_module.dart';
 import '../modules/ocr_module.dart';
 import '../modules/remote_gifticon_ai_parser.dart';
+import '../services/gifticon_notification_service.dart';
 import '../services/gifticon_pipeline_service.dart';
 import '../services/gifticon_storage_service.dart';
 import 'gifticon_list_page.dart';
@@ -34,17 +36,30 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
   @override
   void initState() {
     super.initState();
+    _initPipeline();
+  }
+
+  Future<void> _initPipeline() async {
+    final storageService = GifticonStorageService();
+    await storageService.init();
+
+    final notificationService = GifticonNotificationService(
+      FlutterLocalNotificationsPlugin(),
+    );
+    await notificationService.init();
 
     _pipeline = GifticonPipelineService(
       imagePicker: GifticonImagePickerModule(),
       ocrModule: GifticonOcrModule(),
       detector: GifticonDetectorModule(),
       aiParser: RemoteGifticonAiParser(
-        baseUrl: 'https://d42u-server.vercel.app'
+        baseUrl: 'https://d42u-server.vercel.app',
       ),
+      storageService: storageService,
+      notificationService: notificationService,
     );
 
-    _storageService.init();
+    setState(() {});
   }
 
   @override

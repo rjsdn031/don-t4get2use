@@ -41,9 +41,7 @@ class ScreenshotAutomationService {
         return null;
       }
 
-      debugPrint(
-        '[Gifticon][Automation] latest image path=${latestImage.path}',
-      );
+      debugPrint('[Gifticon][Automation] latest image path=${latestImage.path}');
 
       if (_lastProcessedPath == latestImage.path) {
         debugPrint('[Gifticon][Automation] duplicate image ignored');
@@ -51,12 +49,12 @@ class ScreenshotAutomationService {
       }
 
       final output = await pipeline.runFromImage(latestImage);
-
       _lastProcessedPath = latestImage.path;
 
       debugPrint(
         '[Gifticon][Automation] pipeline completed: '
-            'isGifticon=${output.detection.isGifticon}',
+            'isGifticon=${output.detection.isGifticon}, '
+            'saved=${output.isSaved}',
       );
 
       return output;

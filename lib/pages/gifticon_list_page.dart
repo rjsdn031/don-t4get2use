@@ -5,14 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../models/stored_gifticon.dart';
-import '../modules/android_latest_image_finder_module.dart';
-import '../modules/gifticon_detector_module.dart';
-import '../modules/image_picker_module.dart';
-import '../modules/latest_image_finder_module.dart';
-import '../modules/ocr_module.dart';
-import '../modules/remote_gifticon_ai_parser.dart';
 import '../modules/screenshot_event_listener_module.dart';
-import '../services/gifticon_pipeline_service.dart';
+import '../services/gifticon_services.dart';
 import '../services/gifticon_storage_service.dart';
 import '../services/screenshot_automation_service.dart';
 import 'gifticon_detail_page.dart';
@@ -25,10 +19,8 @@ class GifticonListPage extends StatefulWidget {
 }
 
 class _GifticonListPageState extends State<GifticonListPage> {
-  final GifticonStorageService _storageService = GifticonStorageService();
-
-  late final GifticonPipelineService _pipeline;
-  late final LatestImageFinderModule _latestImageFinder;
+  late final GifticonServices _services;
+  late final GifticonStorageService _storageService;
   late final ScreenshotAutomationService _automationService;
   late final ScreenshotEventListenerModule _screenshotEventListener;
 
@@ -44,26 +36,7 @@ class _GifticonListPageState extends State<GifticonListPage> {
   @override
   void initState() {
     super.initState();
-
-    _pipeline = GifticonPipelineService(
-      imagePicker: GifticonImagePickerModule(),
-      ocrModule: GifticonOcrModule(),
-      detector: GifticonDetectorModule(),
-      aiParser: RemoteGifticonAiParser(
-        baseUrl: 'https://d42u-server.vercel.app'
-      ),
-    );
-
-    _latestImageFinder = AndroidLatestImageFinderModule();
-
-    _automationService = ScreenshotAutomationService(
-      latestImageFinder: _latestImageFinder,
-      pipeline: _pipeline,
-    );
-
-    _screenshotEventListener = ScreenshotEventListenerModule();
-
-    _initPage();
+    _initialize();
   }
 
   @override
@@ -72,11 +45,39 @@ class _GifticonListPageState extends State<GifticonListPage> {
     super.dispose();
   }
 
-  Future<void> _initPage() async {
-    await _loadItems();
+  Future<void> _ensureNotificationPermission() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
 
-    if (_isListeningEnabled) {
-      await _startListeningScreenshotEvents();
+    final status = await Permission.notification.status;
+    if (status.isGranted) return;
+
+    await Permission.notification.request();
+  }
+
+  Future<void> _initialize() async {
+    try {
+      await _ensureNotificationPermission();
+
+      _services = await GifticonServices.create();
+      _storageService = _services.storageService;
+      _automationService = _services.automationService;
+      _screenshotEventListener = ScreenshotEventListenerModule();
+
+      await _loadItems();
+
+      if (_isListeningEnabled) {
+        await _startListeningScreenshotEvents();
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('초기화 중 오류가 발생했습니다: $e')),
+      );
     }
   }
 
@@ -112,29 +113,23 @@ class _GifticonListPageState extends State<GifticonListPage> {
         _isAutoSaving = true;
 
         try {
-          await Future.delayed(const Duration(milliseconds: 500));
+          await Future<void>.delayed(const Duration(milliseconds: 500));
 
           final output = await _automationService.handleScreenshotDetected();
           if (output == null) return;
-          if (!output.detection.isGifticon) return;
-          if (output.parsedInfo == null) return;
-
-          await _storageService.init();
-
-          final saved = await _storageService.saveGifticon(
-            sourceImagePath: output.image.path,
-            info: output.parsedInfo!,
-          );
+          if (!output.isSaved) return;
 
           await _loadItems();
 
           if (!mounted) return;
+
+          final saved = output.storedGifticon;
+          final itemName = saved?.itemName?.trim();
+          final resolvedName =
+          (itemName == null || itemName.isEmpty) ? '기프티콘' : itemName;
+
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '${saved.itemName ?? '기프티콘'}이(가) 자동 저장되었습니다.',
-              ),
-            ),
+            SnackBar(content: Text('$resolvedName 저장 완료')),
           );
         } catch (e) {
           if (!mounted) return;
@@ -171,25 +166,26 @@ class _GifticonListPageState extends State<GifticonListPage> {
 
   Future<void> _toggleListening(bool value) async {
     if (value) {
+      if (!mounted) return;
       setState(() {
         _isListeningEnabled = true;
       });
       await _startListeningScreenshotEvents();
-    } else {
-      await _stopListeningScreenshotEvents();
-      if (!mounted) return;
-      setState(() {
-        _isListeningEnabled = false;
-      });
+      return;
     }
+
+    await _stopListeningScreenshotEvents();
+
+    if (!mounted) return;
+    setState(() {
+      _isListeningEnabled = false;
+    });
   }
 
   Future<void> _loadItems() async {
-    await _storageService.init();
     final items = _storageService.getAllGifticons();
 
     if (!mounted) return;
-
     setState(() {
       _items = items;
       _loading = false;
@@ -201,7 +197,6 @@ class _GifticonListPageState extends State<GifticonListPage> {
     await _loadItems();
 
     if (!mounted) return;
-
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('기프티콘을 삭제했습니다.')),
     );
