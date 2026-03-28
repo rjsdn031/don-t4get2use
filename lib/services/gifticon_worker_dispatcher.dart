@@ -64,11 +64,24 @@ void callbackDispatcher() {
         info: info,
       );
 
+      debugPrint('[Gifticon][Worker] schedule expiry notifications');
+      final scheduled = await notificationService.scheduleExpiryNotifications(stored);
+
+      if (!scheduled) {
+        debugPrint(
+          '[Gifticon][Worker] expiry notifications were deferred until foreground app resumes',
+        );
+      }
+
       debugPrint('[Gifticon][Worker] show saved notification');
       await notificationService.showSavedNotificationFromStored(stored);
 
+      await notificationService.cancelProcessingNotification();
+      debugPrint('[Gifticon][Worker] processing notification cancelled');
+
       debugPrint('[Gifticon][Worker] task success');
       return true;
+
     } catch (e, st) {
       debugPrint('[Gifticon][Worker][Error] $e');
       debugPrintStack(stackTrace: st);

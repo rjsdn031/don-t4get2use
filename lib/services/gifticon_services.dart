@@ -36,6 +36,10 @@ class GifticonServices {
     );
     await notificationService.init();
 
+    await notificationService.rescheduleAllExpiryNotifications(
+      storageService.getAllGifticons(),
+    );
+
     final pipelineService = GifticonPipelineService(
       imagePicker: GifticonImagePickerModule(),
       ocrModule: GifticonOcrModule(),

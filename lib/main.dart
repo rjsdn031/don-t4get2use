@@ -1,4 +1,5 @@
 import 'package:dont4get2use2/pages/gifticon_list_page.dart';
+import 'package:dont4get2use2/pages/gifticon_test_page.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:workmanager/workmanager.dart';
@@ -29,6 +30,7 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: const GifticonListPage(),
+      // home: const GifticonTestPage(),
     );
   }
 }

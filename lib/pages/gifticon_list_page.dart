@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../models/stored_gifticon.dart';
 import '../modules/screenshot_event_listener_module.dart';
+import '../services/gifticon_notification_service.dart';
 import '../services/gifticon_services.dart';
 import '../services/gifticon_storage_service.dart';
 import '../services/screenshot_automation_service.dart';
@@ -25,6 +26,7 @@ class _GifticonListPageState extends State<GifticonListPage>
   late final GifticonStorageService _storageService;
   late final ScreenshotAutomationService _automationService;
   late final ScreenshotEventListenerModule _screenshotEventListener;
+  late final GifticonNotificationService _notificationService;
 
   StreamSubscription<dynamic>? _screenshotSubscription;
 
@@ -35,6 +37,8 @@ class _GifticonListPageState extends State<GifticonListPage>
   bool _isListeningActive = false;
   bool _isProcessingScreenshot = false;
   bool _isInitialized = false;
+  bool _isCheckingExactAlarmPermission = false;
+  bool _canScheduleExactAlarms = false;
 
   List<StoredGifticon> _items = const [];
 
@@ -58,6 +62,11 @@ class _GifticonListPageState extends State<GifticonListPage>
 
     if (state == AppLifecycleState.resumed && _isInitialized) {
       _loadItems();
+      _refreshExactAlarmPermissionStatus();
+
+      if (_isListeningEnabled && !_isListeningActive) {
+        _startListeningScreenshotEvents();
+      }
     }
   }
 
@@ -78,11 +87,13 @@ class _GifticonListPageState extends State<GifticonListPage>
       _storageService = _services.storageService;
       _automationService = _services.automationService;
       _screenshotEventListener = ScreenshotEventListenerModule();
+      _notificationService = _services.notificationService;
 
       if (!mounted) return;
 
       _isInitialized = true;
       await _loadItems();
+      await _refreshExactAlarmPermissionStatus();
 
       if (_isListeningEnabled) {
         await _startListeningScreenshotEvents();
@@ -96,6 +107,52 @@ class _GifticonListPageState extends State<GifticonListPage>
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('초기화 중 오류가 발생했습니다: $e')),
+      );
+    }
+  }
+
+  Future<void> _refreshExactAlarmPermissionStatus() async {
+    if (!_isInitialized) return;
+
+    setState(() {
+      _isCheckingExactAlarmPermission = true;
+    });
+
+    try {
+      final canSchedule =
+      await _services.notificationService.canScheduleExactAlarms();
+
+      if (!mounted) return;
+      setState(() {
+        _canScheduleExactAlarms = canSchedule;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('정확 알람 권한 상태를 확인하지 못했습니다: $e')),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isCheckingExactAlarmPermission = false;
+      });
+    }
+  }
+
+  Future<void> _openExactAlarmSettings() async {
+    try {
+      await _services.notificationService.openExactAlarmSettings();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('정확 알람 설정 화면을 열었습니다. 허용 후 앱으로 돌아와 주세요.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('정확 알람 설정 화면을 열지 못했습니다: $e')),
       );
     }
   }
@@ -114,10 +171,17 @@ class _GifticonListPageState extends State<GifticonListPage>
   }
 
   Future<void> _startListeningScreenshotEvents() async {
-    if (_isListeningActive) return;
+    if (_isListeningActive) {
+      debugPrint('[Gifticon][List] screenshot listener already active');
+      return;
+    }
 
+    debugPrint('[Gifticon][List] requesting media permission...');
     final granted = await _ensureMediaPermission();
+    debugPrint('[Gifticon][List] media permission granted=$granted');
+
     if (!granted) {
+      debugPrint('[Gifticon][List] media permission denied');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('이미지 접근 권한이 필요합니다.')),
@@ -125,8 +189,12 @@ class _GifticonListPageState extends State<GifticonListPage>
       return;
     }
 
+    debugPrint('[Gifticon][List] start screenshot event subscription');
+
     _screenshotSubscription = _screenshotEventListener.events.listen(
           (event) async {
+        debugPrint('[Gifticon][List] screenshot event received: $event');
+
         if (!_isListeningEnabled || _isProcessingScreenshot) return;
 
         _isProcessingScreenshot = true;
@@ -137,6 +205,8 @@ class _GifticonListPageState extends State<GifticonListPage>
           final output = await _automationService.handleScreenshotDetected(
             isBackground: isBackground,
           );
+
+          debugPrint('[Gifticon][List] automation output=$output');
 
           if (output == null) return;
           if (!output.isGifticon) return;
@@ -151,6 +221,7 @@ class _GifticonListPageState extends State<GifticonListPage>
             );
           }
         } catch (e) {
+          debugPrint('[Gifticon][List][Error] $e');
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('스크린샷 처리 중 오류가 발생했습니다: $e')),
@@ -160,6 +231,7 @@ class _GifticonListPageState extends State<GifticonListPage>
         }
       },
       onError: (error) {
+        debugPrint('[Gifticon][List][StreamError] $error');
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('스크린샷 이벤트 수신 오류: $error')),
@@ -171,6 +243,8 @@ class _GifticonListPageState extends State<GifticonListPage>
     setState(() {
       _isListeningActive = true;
     });
+
+    debugPrint('[Gifticon][List] screenshot listener active');
   }
 
   Future<void> _stopListeningScreenshotEvents() async {
@@ -212,6 +286,7 @@ class _GifticonListPageState extends State<GifticonListPage>
   }
 
   Future<void> _deleteItem(StoredGifticon item) async {
+    await _notificationService.cancelExpiryNotifications(item.id);
     await _storageService.deleteGifticon(item.id);
     await _loadItems();
 
@@ -231,6 +306,7 @@ class _GifticonListPageState extends State<GifticonListPage>
 
     if (!mounted) return;
     await _loadItems();
+    await _refreshExactAlarmPermissionStatus();
   }
 
   String _formatDate(DateTime? date) {
@@ -263,6 +339,65 @@ class _GifticonListPageState extends State<GifticonListPage>
     if (result == true) {
       await _deleteItem(item);
     }
+  }
+
+  Widget _buildExactAlarmPermissionButton() {
+    final isGranted = _canScheduleExactAlarms;
+    final icon = isGranted ? Icons.alarm_on : Icons.alarm_add;
+    final title = isGranted ? '정확 알람 권한 허용됨' : '정확 알람 권한 허용하기';
+    final subtitle = isGranted
+        ? '만료 3일 전 / 하루 전 오전 9시 알림을 예약할 수 있어요.'
+        : '기프티콘 만료 알림을 정확한 시간에 받으려면 권한이 필요해요.';
+
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: _isCheckingExactAlarmPermission ? null : _openExactAlarmSettings,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Icon(icon),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              if (_isCheckingExactAlarmPermission)
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Icon(
+                  isGranted ? Icons.check_circle : Icons.chevron_right,
+                  color: isGranted
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildAddCard() {
@@ -387,18 +522,25 @@ class _GifticonListPageState extends State<GifticonListPage>
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: Text(
-                  _isListeningActive
-                      ? '스크린샷 자동 감지 켜짐'
-                      : '스크린샷 자동 감지 꺼짐',
-                ),
-              ),
-              Switch(
-                value: _isListeningEnabled,
-                onChanged: _toggleListening,
+              _buildExactAlarmPermissionButton(),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _isListeningActive
+                          ? '스크린샷 자동 감지 켜짐'
+                          : '스크린샷 자동 감지 꺼짐',
+                    ),
+                  ),
+                  Switch(
+                    value: _isListeningEnabled,
+                    onChanged: _toggleListening,
+                  ),
+                ],
               ),
             ],
           ),

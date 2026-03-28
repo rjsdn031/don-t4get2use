@@ -1,25 +1,35 @@
 package lab.p4c.dont4get2use2
 
+import android.app.AlarmManager
 import android.content.ContentUris
+import android.content.Context
+import android.content.Intent
+import android.database.ContentObserver
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
+import android.provider.Settings
 import android.util.Log
 import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
-import android.database.ContentObserver
-import android.os.Handler
-import android.os.Looper
-import io.flutter.plugin.common.EventChannel
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "gifticon/latest_image_finder"
-    private val METHOD_CHANNEL = "gifticon/latest_image_finder"
-    private val EVENT_CHANNEL = "gifticon/screenshot_events"
+    companion object {
+        private const val TAG_SCREENSHOT = "GifticonScreenshot"
+        private const val TAG_LATEST_IMAGE = "GifticonLatestImage"
+
+        private const val METHOD_CHANNEL = "gifticon/latest_image_finder"
+        private const val EVENT_CHANNEL = "gifticon/screenshot_events"
+        private const val EXACT_ALARM_CHANNEL = "gifticon/exact_alarm"
+    }
 
     private var eventSink: EventChannel.EventSink? = null
     private var screenshotObserver: ContentObserver? = null
@@ -40,6 +50,33 @@ class MainActivity : FlutterActivity() {
                         result.error("LATEST_IMAGE_ERROR", e.message, null)
                     }
                 }
+
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            EXACT_ALARM_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "canScheduleExactAlarms" -> {
+                    try {
+                        result.success(canScheduleExactAlarmsCompat())
+                    } catch (e: Exception) {
+                        result.error("EXACT_ALARM_CHECK_ERROR", e.message, null)
+                    }
+                }
+
+                "openExactAlarmSettings" -> {
+                    try {
+                        openExactAlarmSettingsCompat()
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("EXACT_ALARM_SETTINGS_ERROR", e.message, null)
+                    }
+                }
+
                 else -> result.notImplemented()
             }
         }
@@ -49,15 +86,39 @@ class MainActivity : FlutterActivity() {
             EVENT_CHANNEL
         ).setStreamHandler(object : EventChannel.StreamHandler {
             override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                Log.d(TAG_SCREENSHOT, "event channel onListen")
                 eventSink = events
                 registerScreenshotObserver()
             }
 
             override fun onCancel(arguments: Any?) {
+                Log.d(TAG_SCREENSHOT, "event channel onCancel")
                 unregisterScreenshotObserver()
                 eventSink = null
             }
         })
+    }
+
+    private fun canScheduleExactAlarmsCompat(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return true
+        }
+
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        return alarmManager.canScheduleExactAlarms()
+    }
+
+    private fun openExactAlarmSettingsCompat() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return
+        }
+
+        val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+            data = Uri.parse("package:$packageName")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        startActivity(intent)
     }
 
     private fun findLatestScreenshot(): Map<String, Any?> {
@@ -127,15 +188,16 @@ class MainActivity : FlutterActivity() {
                 val contentUri = ContentUris.withAppendedId(collection, id)
                 val cachePath = copyContentUriToCache(contentUri, fileName)
 
-                Log.d("GifticonLatestImage", "selected contentUri=$contentUri")
-                Log.d("GifticonLatestImage", "cachePath=$cachePath")
+                Log.d(TAG_LATEST_IMAGE, "selected contentUri=$contentUri")
+                Log.d(TAG_LATEST_IMAGE, "cachePath=$cachePath")
 
                 return mapOf(
                     "path" to cachePath,
                     "fileName" to fileName,
                     "sizeBytes" to sizeBytes.toInt(),
                     "relativePath" to relativePath,
-                    "contentUri" to contentUri.toString()
+                    "contentUri" to contentUri.toString(),
+                    "debugLogs" to debugLogs,
                 )
             }
         }
@@ -172,7 +234,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun copyContentUriToCache(
-        contentUri: android.net.Uri,
+        contentUri: Uri,
         fileName: String?
     ): String? {
         val safeName = fileName ?: "latest_image.jpg"
@@ -188,11 +250,23 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun registerScreenshotObserver() {
-        if (screenshotObserver != null) return
+        if (screenshotObserver != null) {
+            Log.d(TAG_SCREENSHOT, "observer already registered")
+            return
+        }
+
+        Log.d(TAG_SCREENSHOT, "register screenshot observer")
 
         screenshotObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
                 super.onChange(selfChange)
+                Log.d(TAG_SCREENSHOT, "media store changed (legacy)")
+                notifyScreenshotEvent("media_changed")
+            }
+
+            override fun onChange(selfChange: Boolean, uri: Uri?) {
+                super.onChange(selfChange, uri)
+                Log.d(TAG_SCREENSHOT, "media store changed uri=$uri")
                 notifyScreenshotEvent("media_changed")
             }
         }
@@ -206,6 +280,7 @@ class MainActivity : FlutterActivity() {
 
     private fun unregisterScreenshotObserver() {
         screenshotObserver?.let {
+            Log.d(TAG_SCREENSHOT, "unregister screenshot observer")
             applicationContext.contentResolver.unregisterContentObserver(it)
         }
         screenshotObserver = null
@@ -213,6 +288,7 @@ class MainActivity : FlutterActivity() {
 
     private fun notifyScreenshotEvent(reason: String) {
         try {
+            Log.d(TAG_SCREENSHOT, "emit screenshot event: $reason")
             eventSink?.success(
                 mapOf(
                     "type" to "screenshot_candidate",
@@ -221,7 +297,7 @@ class MainActivity : FlutterActivity() {
                 )
             )
         } catch (e: Exception) {
-            Log.e("GifticonScreenshot", "failed to emit event: ${e.message}", e)
+            Log.e(TAG_SCREENSHOT, "failed to emit event: ${e.message}", e)
         }
     }
 }

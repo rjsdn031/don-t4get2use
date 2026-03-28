@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../models/gifticon_models.dart';
 import '../modules/barcode_module.dart';
@@ -8,6 +9,7 @@ import '../modules/gifticon_detector_module.dart';
 import '../modules/image_picker_module.dart';
 import '../modules/ocr_module.dart';
 import '../modules/remote_gifticon_ai_parser.dart';
+import '../services/gifticon_notification_service.dart';
 import '../services/gifticon_pipeline_service.dart';
 import '../services/gifticon_storage_service.dart';
 
@@ -21,6 +23,7 @@ class GifticonAnalysisPage extends StatefulWidget {
 class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
   late final GifticonPipelineService _pipeline;
   late final RemoteGifticonAiParser _aiParser;
+  late final GifticonNotificationService _notificationService;
   final GifticonStorageService _storageService = GifticonStorageService();
 
   bool _loading = false;
@@ -40,6 +43,11 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
 
   Future<void> _initPage() async {
     await _storageService.init();
+
+    _notificationService = GifticonNotificationService(
+      FlutterLocalNotificationsPlugin(),
+    );
+    await _notificationService.init();
 
     _pipeline = GifticonPipelineService(
       imagePicker: GifticonImagePickerModule(),
@@ -131,10 +139,13 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
     });
 
     try {
-      await _storageService.saveGifticon(
+      final stored = await _storageService.saveGifticon(
         sourceImagePath: _selectedImage!.path,
         info: _parsedInfo!,
       );
+
+      final scheduled =
+      await _notificationService.scheduleExpiryNotifications(stored);
 
       if (!mounted) return;
 
@@ -143,9 +154,13 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
         _statusText = '저장 완료';
       });
 
+      final snackBarMessage = scheduled
+          ? '기프티콘이 저장되고 만료 알림이 예약되었습니다.'
+          : '기프티콘이 저장되었습니다. 정확 알람 권한을 허용하면 만료 알림도 예약됩니다.';
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('기프티콘이 저장되었습니다.'),
+        SnackBar(
+          content: Text(snackBarMessage),
         ),
       );
 
