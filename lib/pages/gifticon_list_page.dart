@@ -29,6 +29,12 @@ class _GifticonListPageState extends State<GifticonListPage>
   late final GifticonNotificationService _notificationService;
 
   StreamSubscription<dynamic>? _screenshotSubscription;
+  StreamSubscription<dynamic>? _hiveWatchSubscription;
+
+  Timer? _pollingTimer;
+  int _pollingCount = 0;
+  static const int _maxPollingCount = 6;
+  static const Duration _pollingInterval = Duration(seconds: 5);
 
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
 
@@ -53,6 +59,8 @@ class _GifticonListPageState extends State<GifticonListPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _screenshotSubscription?.cancel();
+    _hiveWatchSubscription?.cancel();
+    _stopPolling();
     super.dispose();
   }
 
@@ -170,6 +178,45 @@ class _GifticonListPageState extends State<GifticonListPage>
     return storageStatus.isGranted;
   }
 
+  void _startPollingForNewGifticon() {
+    _stopPolling();
+    _pollingCount = 0;
+    final knownCount = _items.length;
+
+    debugPrint('[Gifticon][List] start polling (knownCount=$knownCount)');
+
+    _pollingTimer = Timer.periodic(_pollingInterval, (_) async {
+      if (!mounted) {
+        _stopPolling();
+        return;
+      }
+
+      _pollingCount++;
+      debugPrint('[Gifticon][List] polling $_pollingCount/$_maxPollingCount');
+
+      final latest = _storageService.getAllGifticons();
+
+      if (latest.length > knownCount) {
+        debugPrint('[Gifticon][List] new gifticon detected — refreshing');
+        _stopPolling();
+        setState(() => _items = latest);
+        return;
+      }
+
+      if (_pollingCount >= _maxPollingCount) {
+        debugPrint('[Gifticon][List] polling timeout — force refresh');
+        _stopPolling();
+        await _loadItems();
+      }
+    });
+  }
+
+  void _stopPolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = null;
+    _pollingCount = 0;
+  }
+
   Future<void> _startListeningScreenshotEvents() async {
     if (_isListeningActive) {
       debugPrint('[Gifticon][List] screenshot listener already active');
@@ -216,9 +263,10 @@ class _GifticonListPageState extends State<GifticonListPage>
           if (!isBackground) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('기프티콘을 인식했고 저장 작업을 시작했습니다.'),
+                content: Text('기프티콘을 인식했습니다. 저장 중...'),
               ),
             );
+            _startPollingForNewGifticon();
           }
         } catch (e) {
           debugPrint('[Gifticon][List][Error] $e');
@@ -263,6 +311,7 @@ class _GifticonListPageState extends State<GifticonListPage>
       setState(() {
         _isListeningEnabled = true;
       });
+
       await _startListeningScreenshotEvents();
       return;
     }
@@ -294,6 +343,22 @@ class _GifticonListPageState extends State<GifticonListPage>
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('기프티콘을 삭제했습니다.')),
     );
+  }
+
+  Future<void> _openDetailPage(StoredGifticon item) async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GifticonDetailPage(
+          item: item,
+          storageService: _storageService,
+          notificationService: _notificationService,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    if (result == true) await _loadItems();
   }
 
   Future<void> _openAnalysisPage() async {
@@ -440,67 +505,47 @@ class _GifticonListPageState extends State<GifticonListPage>
 
   @override
   Widget build(BuildContext context) {
-    final listSection = _loading
-        ? const Center(child: CircularProgressIndicator())
-        : _items.isEmpty
-        ? const Expanded(
-      child: Center(
-        child: Text('저장된 기프티콘이 없습니다.'),
-      ),
-    )
-        : Expanded(
-      child: ListView.separated(
-        padding: const EdgeInsets.only(top: 12),
-        itemCount: _items.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (context, index) {
-          final item = _items[index];
+    final activeItems = _items.where((e) => !e.isInactive).toList();
+    final inactiveItems = _items.where((e) => e.isInactive).toList();
 
-          return Card(
-            child: ListTile(
-              contentPadding: const EdgeInsets.all(12),
-              leading: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 56,
-                  height: 56,
-                  child: Image.file(
-                    File(item.imagePath),
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const ColoredBox(
-                      color: Color(0xFFF2F2F2),
-                      child: Icon(Icons.broken_image),
-                    ),
+    Widget listSection;
+
+    if (_loading) {
+      listSection = const Expanded(
+        child: Center(child: CircularProgressIndicator()),
+      );
+    } else if (_items.isEmpty) {
+      listSection = const Expanded(
+        child: Center(child: Text('저장된 기프티콘이 없습니다.')),
+      );
+    } else {
+      listSection = Expanded(
+        child: ListView(
+          padding: const EdgeInsets.only(top: 12),
+          children: [
+            // ── 활성 섹션 ──
+            ...activeItems.map((item) => _buildGifticonCard(item, muted: false)),
+
+            // ── 비활성 섹션 헤더 ──
+            if (inactiveItems.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  '사용 완료 / 만료',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.outline,
                   ),
                 ),
               ),
-              title: Text(item.itemName ?? '상품명 없음'),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 4),
-                  Text(item.merchantName ?? '교환처 없음'),
-                  const SizedBox(height: 2),
-                  Text('유효기간: ${_formatDate(item.expiresAt)}'),
-                ],
+              ...inactiveItems.map(
+                    (item) => _buildGifticonCard(item, muted: true),
               ),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete_outline),
-                onPressed: () => _confirmDelete(item),
-              ),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => GifticonDetailPage(item: item),
-                  ),
-                );
-              },
-            ),
-          );
-        },
-      ),
-    );
+            ],
+          ],
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -509,10 +554,7 @@ class _GifticonListPageState extends State<GifticonListPage>
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          children: [
-            listSection,
-            // _buildAddCard(),
-          ],
+          children: [listSection],
         ),
       ),
       floatingActionButton: FloatingActionButton(
@@ -543,6 +585,93 @@ class _GifticonListPageState extends State<GifticonListPage>
                 ],
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGifticonCard(StoredGifticon item, {required bool muted}) {
+    final statusLabel = item.isUsed
+        ? '사용함'
+        : item.isExpired
+        ? '만료됨'
+        : null;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Opacity(
+        opacity: muted ? 0.45 : 1.0,
+        child: Card(
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(12),
+            leading: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 56,
+                height: 56,
+                child: ColorFiltered(
+                  colorFilter: muted
+                      ? const ColorFilter.matrix([
+                    0.2126, 0.7152, 0.0722, 0, 0,
+                    0.2126, 0.7152, 0.0722, 0, 0,
+                    0.2126, 0.7152, 0.0722, 0, 0,
+                    0,      0,      0,      1, 0,
+                  ])
+                      : const ColorFilter.mode(
+                      Colors.transparent, BlendMode.color),
+                  child: Image.file(
+                    File(item.imagePath),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const ColoredBox(
+                      color: Color(0xFFF2F2F2),
+                      child: Icon(Icons.broken_image),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            title: Row(
+              children: [
+                Expanded(child: Text(item.itemName ?? '상품명 없음')),
+                if (statusLabel != null) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: (item.isUsed ? Colors.grey : Colors.red)
+                          .withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      statusLabel,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: item.isUsed
+                            ? Colors.grey.shade600
+                            : Colors.red.shade400,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                Text(item.merchantName ?? '교환처 없음'),
+                const SizedBox(height: 2),
+                Text('유효기간: ${_formatDate(item.expiresAt)}'),
+              ],
+            ),
+            trailing: IconButton(
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => _confirmDelete(item),
+            ),
+            onTap: () => _openDetailPage(item),
           ),
         ),
       ),

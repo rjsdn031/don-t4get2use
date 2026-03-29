@@ -59,13 +59,26 @@ void callbackDispatcher() {
       final info = await parser.parse(rawText: rawText);
 
       debugPrint('[Gifticon][Worker] save parsed gifticon');
-      final stored = await storageService.saveGifticon(
+      final result = await storageService.saveGifticon(
         sourceImagePath: imagePath,
         info: info,
       );
 
+      if (result.isDuplicate) {
+        debugPrint(
+          '[Gifticon][Worker] duplicate — skip notification schedule. '
+              'existing id=${result.gifticon.id}',
+        );
+        await notificationService.cancelProcessingNotification();
+        debugPrint('[Gifticon][Worker] processing notification cancelled (duplicate)');
+        return true;
+      }
+
+      final stored = result.gifticon;
+
       debugPrint('[Gifticon][Worker] schedule expiry notifications');
-      final scheduled = await notificationService.scheduleExpiryNotifications(stored);
+      final scheduled =
+      await notificationService.scheduleExpiryNotifications(stored);
 
       if (!scheduled) {
         debugPrint(
@@ -81,15 +94,13 @@ void callbackDispatcher() {
 
       debugPrint('[Gifticon][Worker] task success');
       return true;
-
     } catch (e, st) {
       debugPrint('[Gifticon][Worker][Error] $e');
       debugPrintStack(stackTrace: st);
 
       try {
-        await notificationService.init();
         await notificationService.cancelProcessingNotification();
-        debugPrint('[Gifticon][Worker] processing notification cancelled');
+        debugPrint('[Gifticon][Worker] processing notification cancelled (on error)');
       } catch (cancelError, cancelSt) {
         debugPrint('[Gifticon][Worker][CancelNotificationError] $cancelError');
         debugPrintStack(stackTrace: cancelSt);

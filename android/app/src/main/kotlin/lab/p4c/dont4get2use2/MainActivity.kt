@@ -99,6 +99,11 @@ class MainActivity : FlutterActivity() {
         })
     }
 
+    override fun onDestroy() {
+        unregisterScreenshotObserver()
+        super.onDestroy()
+    }
+
     private fun canScheduleExactAlarmsCompat(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             return true

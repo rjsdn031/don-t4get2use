@@ -66,7 +66,7 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
 
   @override
   void dispose() {
-    _pipeline.ocrModule.dispose();
+    _pipeline.dispose();
     super.dispose();
   }
 
@@ -139,15 +139,30 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
     });
 
     try {
-      final stored = await _storageService.saveGifticon(
+      final result = await _storageService.saveGifticon(
         sourceImagePath: _selectedImage!.path,
         info: _parsedInfo!,
       );
 
-      final scheduled =
-      await _notificationService.scheduleExpiryNotifications(stored);
-
       if (!mounted) return;
+
+      if (result.isDuplicate) {
+        setState(() {
+          _saved = true;
+          _statusText = '이미 저장된 기프티콘입니다.';
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('이미 저장된 기프티콘입니다.')),
+        );
+
+        Navigator.pop(context, false); // 새로 저장된 게 아니므로 false
+        return;
+      }
+
+      final scheduled = await _notificationService.scheduleExpiryNotifications(
+        result.gifticon,
+      );
 
       setState(() {
         _saved = true;
@@ -159,19 +174,15 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
           : '기프티콘이 저장되었습니다. 정확 알람 권한을 허용하면 만료 알림도 예약됩니다.';
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(snackBarMessage),
-        ),
+        SnackBar(content: Text(snackBarMessage)),
       );
 
-      Navigator.pop(context, true);
+      Navigator.pop(context, true); // 새로 저장됐으므로 true
     } catch (e) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('저장 실패: $e'),
-        ),
+        SnackBar(content: Text('저장 실패: $e')),
       );
     } finally {
       if (mounted) {
@@ -250,8 +261,10 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (_isGifticon == true && _parsedInfo != null) ...[
-                              _buildInfoTile('교환처', _parsedInfo?.merchantName ?? '-'),
-                              _buildInfoTile('상품 이름', _parsedInfo?.itemName ?? '-'),
+                              _buildInfoTile(
+                                  '교환처', _parsedInfo?.merchantName ?? '-'),
+                              _buildInfoTile(
+                                  '상품 이름', _parsedInfo?.itemName ?? '-'),
                               _buildInfoTile(
                                 '유효기간',
                                 _formatDate(_parsedInfo?.expiresAt),
