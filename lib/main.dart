@@ -96,7 +96,7 @@ class _AppBootstrapPageState extends State<AppBootstrapPage> {
         }
 
         final services = snapshot.data!;
-        const bool useDebugRunner = true;
+        const bool useDebugRunner = false; // true면 test session
 
         if (useDebugRunner) {
           return DebugScenarioRunnerPage(
