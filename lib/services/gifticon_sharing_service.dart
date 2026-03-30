@@ -13,14 +13,16 @@ class GifticonSharingService {
     required String baseUrl,
     required this.storageService,
     required this.deviceIdService,
-  }) : _dio = Dio(
-    BaseOptions(
-      baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 30),
-      headers: {'Content-Type': 'application/json'},
-    ),
-  );
+    Dio? dio,
+  }) : _dio = dio ??
+      Dio(
+        BaseOptions(
+          baseUrl: baseUrl,
+          connectTimeout: const Duration(seconds: 15),
+          receiveTimeout: const Duration(seconds: 30),
+          headers: {'Content-Type': 'application/json'},
+        ),
+      );
 
   final Dio _dio;
   final GifticonStorageService storageService;

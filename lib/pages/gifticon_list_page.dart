@@ -14,7 +14,12 @@ import 'gifticon_analysis_page.dart';
 import 'gifticon_detail_page.dart';
 
 class GifticonListPage extends StatefulWidget {
-  const GifticonListPage({super.key});
+  const GifticonListPage({
+    super.key,
+    this.servicesOverride,
+  });
+
+  final GifticonServices? servicesOverride;
 
   @override
   State<GifticonListPage> createState() => _GifticonListPageState();
@@ -90,7 +95,7 @@ class _GifticonListPageState extends State<GifticonListPage>
     try {
       await _ensureNotificationPermission();
 
-      _services = await GifticonServices.create();
+      _services = widget.servicesOverride ?? await GifticonServices.create();
       _storageService = _services.storageService;
       _automationService = _services.automationService;
       _screenshotEventListener = ScreenshotEventListenerModule();
