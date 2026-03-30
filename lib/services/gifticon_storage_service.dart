@@ -90,6 +90,13 @@ class GifticonStorageService {
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
+  StoredGifticon? getGifticonById(String id) {
+    final box = Hive.box(_boxName);
+    final raw = box.get(id);
+    if (raw == null) return null;
+    return StoredGifticon.fromJson(raw as Map);
+  }
+
   Future<StoredGifticon> markAsUsed(String id, {String? myNickname}) async {
     final box = Hive.box(_boxName);
     final raw = box.get(id);

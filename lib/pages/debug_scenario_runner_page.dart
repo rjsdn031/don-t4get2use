@@ -108,6 +108,13 @@ class _DebugScenarioRunnerPageState extends State<DebugScenarioRunnerPage> {
     }
   }
 
+  Future<void> _scheduleBackgroundAutoShare(StoredGifticon item) async {
+    await widget.services.workService.scheduleAutoShareWork(
+      gifticonId: item.id,
+      initialDelay: const Duration(seconds: 10),
+    );
+  }
+
   StoredGifticon? get _latestItem => _items.isEmpty ? null : _items.first;
 
   DateTime get _appNow => widget.debugTimeController.now();
@@ -278,6 +285,21 @@ class _DebugScenarioRunnerPageState extends State<DebugScenarioRunnerPage> {
                       },
                     ),
                     child: const Text('직접 공유'),
+                  ),
+                  ElevatedButton(
+                    onPressed: _busy || latest == null
+                        ? null
+                        : () => _run(
+                      '백그라운드 공유 작업 예약(10초)',
+                          () async {
+                        await _scheduleBackgroundAutoShare(latest);
+                        _log(
+                          'background auto share scheduled: '
+                              'id=${latest.id}, delay=10s',
+                        );
+                      },
+                    ),
+                    child: const Text('백그라운드 공유 예약(10초)'),
                   ),
                   ElevatedButton(
                     onPressed: _busy || latest == null
