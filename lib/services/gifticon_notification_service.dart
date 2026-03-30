@@ -5,16 +5,22 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../models/stored_gifticon.dart';
 import 'exact_alarm_permission_service.dart';
+import 'gifticon_sharing_service.dart';
 
 class GifticonNotificationService {
   GifticonNotificationService(
       this._notifications, {
         ExactAlarmPermissionService? exactAlarmPermissionService,
-      }) : _exactAlarmPermissionService =
-      exactAlarmPermissionService ?? ExactAlarmPermissionService();
+        GifticonSharingService? sharingService,
+      })  : _exactAlarmPermissionService =
+      exactAlarmPermissionService ?? ExactAlarmPermissionService(),
+        _sharingService = sharingService;
 
   final FlutterLocalNotificationsPlugin _notifications;
   final ExactAlarmPermissionService _exactAlarmPermissionService;
+
+  /// 공유 기능이 활성화된 경우에만 주입 (없으면 공유 스킵)
+  final GifticonSharingService? _sharingService;
 
   static const String _pipelineChannelId = 'gifticon_pipeline';
   static const String _pipelineChannelName = '기프티콘 저장 알림';
@@ -147,9 +153,7 @@ class GifticonNotificationService {
 
   Future<bool> scheduleExpiryNotifications(StoredGifticon stored) async {
     final expiresAt = stored.expiresAt;
-    if (expiresAt == null) {
-      return false;
-    }
+    if (expiresAt == null) return false;
 
     final canSchedule = await canScheduleExactAlarms();
     if (!canSchedule) {
@@ -173,9 +177,12 @@ class GifticonNotificationService {
       payload: stored.id,
     );
 
+    // 1일 전 알림 스케줄 + 공유 업로드 트리거
+    final oneDayBefore = _at9am(expiresAt.subtract(const Duration(days: 1)));
+
     await _scheduleExpiryNotification(
       id: _oneDayBeforeNotificationId(stored.id),
-      scheduledAt: _at9am(expiresAt.subtract(const Duration(days: 1))),
+      scheduledAt: oneDayBefore,
       title: '기프티콘 만료 하루 전',
       body: _buildExpiryBody(
         merchantName: stored.merchantName,
@@ -184,6 +191,15 @@ class GifticonNotificationService {
       ),
       payload: stored.id,
     );
+
+    // 1일 전 시점이 아직 안 지났으면 공유 업로드 예약
+    // (실제 업로드는 oneDayBefore 시점에 앱이 켜져 있어야 동작하므로
+    //  지금 당장 업로드 시도 — 이미 sharedAt이 있으면 내부에서 스킵됨)
+    if (oneDayBefore.isAfter(DateTime.now())) {
+      _sharingService?.uploadForSharing(stored).catchError((e) {
+        debugPrint('[Gifticon][Notification] uploadForSharing error: $e');
+      });
+    }
 
     return true;
   }
@@ -306,9 +322,7 @@ class GifticonNotificationService {
     required String body,
     required String payload,
   }) async {
-    if (!scheduledAt.isAfter(DateTime.now())) {
-      return;
-    }
+    if (!scheduledAt.isAfter(DateTime.now())) return;
 
     const androidDetails = AndroidNotificationDetails(
       _expiryChannelId,

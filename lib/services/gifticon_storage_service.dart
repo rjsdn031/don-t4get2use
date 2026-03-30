@@ -101,6 +101,73 @@ class GifticonStorageService {
     return updated;
   }
 
+  /// 공유 완료 시 sharedAt 업데이트
+  Future<void> markAsShared(String id) async {
+    final box = Hive.box(_boxName);
+    final raw = box.get(id);
+    if (raw == null) return;
+
+    final existing = StoredGifticon.fromJson(raw as Map);
+    if (existing.sharedAt != null) return;
+
+    final updated = existing.copyWith(sharedAt: DateTime.now());
+    await box.put(id, updated.toJson());
+    debugPrint('[Gifticon][Storage] marked as shared: id=$id');
+  }
+
+  /// FCM으로 공유받은 기프티콘을 로컬에 저장
+  Future<StoredGifticon> saveReceivedGifticon({
+    required String gifticonId,
+    required String localImagePath,
+    required String? merchantName,
+    required String? itemName,
+    required String? couponNumber,
+    required DateTime expiresAt,
+    required String receivedFrom,
+  }) async {
+    final box = Hive.box(_boxName);
+
+    // 이미 있으면 그대로 반환
+    final existing = box.get(gifticonId);
+    if (existing != null) {
+      return StoredGifticon.fromJson(existing as Map);
+    }
+
+    final savedImagePath = await _copyImageToAppDirectory(
+      sourceImagePath: localImagePath,
+      id: gifticonId,
+    );
+
+    final stored = StoredGifticon(
+      id: gifticonId,
+      imagePath: savedImagePath,
+      merchantName: merchantName,
+      itemName: itemName,
+      expiresAt: expiresAt,
+      couponNumber: couponNumber,
+      createdAt: DateTime.now(),
+      receivedFrom: receivedFrom,
+    );
+
+    await box.put(gifticonId, stored.toJson());
+    debugPrint('[Gifticon][Storage] received gifticon saved: id=$gifticonId');
+    return stored;
+  }
+
+  /// FCM gifticon_used 수신 시 — id가 있으면 로컬도 사용 처리
+  Future<void> markAsUsedIfExists(String id) async {
+    final box = Hive.box(_boxName);
+    final raw = box.get(id);
+    if (raw == null) return;
+
+    final existing = StoredGifticon.fromJson(raw as Map);
+    if (existing.isUsed) return;
+
+    final updated = existing.copyWith(usedAt: DateTime.now());
+    await box.put(id, updated.toJson());
+    debugPrint('[Gifticon][Storage] markAsUsedIfExists: id=$id');
+  }
+
   Future<void> deleteGifticon(String id) async {
     final box = Hive.box(_boxName);
     final raw = box.get(id);

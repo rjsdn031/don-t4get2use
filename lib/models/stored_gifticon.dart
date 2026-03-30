@@ -7,6 +7,8 @@ class StoredGifticon {
   final String? couponNumber;
   final DateTime createdAt;
   final DateTime? usedAt;
+  final DateTime? sharedAt;    // 내가 공유한 시각
+  final String? receivedFrom;  // 공유받은 경우 원래 owner 기기 ID
 
   const StoredGifticon({
     required this.id,
@@ -17,12 +19,14 @@ class StoredGifticon {
     required this.couponNumber,
     required this.createdAt,
     this.usedAt,
+    this.sharedAt,
+    this.receivedFrom,
   });
 
-  /// 사용자가 직접 '사용함' 처리한 경우
   bool get isUsed => usedAt != null;
+  bool get isShared => sharedAt != null;
+  bool get isReceived => receivedFrom != null;
 
-  /// 만료일이 지난 경우 (사용 여부와 무관)
   bool get isExpired {
     if (expiresAt == null) return false;
     final today = DateTime.now();
@@ -31,7 +35,6 @@ class StoredGifticon {
     return expiry.isBefore(todayDate);
   }
 
-  /// 리스트에서 비활성 처리할 조건
   bool get isInactive => isUsed || isExpired;
 
   Map<String, dynamic> toJson() => {
@@ -43,6 +46,8 @@ class StoredGifticon {
     'couponNumber': couponNumber,
     'createdAt': createdAt.toIso8601String(),
     'usedAt': usedAt?.toIso8601String(),
+    'sharedAt': sharedAt?.toIso8601String(),
+    'receivedFrom': receivedFrom,
   };
 
   factory StoredGifticon.fromJson(Map<dynamic, dynamic> json) {
@@ -59,6 +64,10 @@ class StoredGifticon {
       usedAt: json['usedAt'] != null
           ? DateTime.tryParse(json['usedAt'] as String)
           : null,
+      sharedAt: json['sharedAt'] != null
+          ? DateTime.tryParse(json['sharedAt'] as String)
+          : null,
+      receivedFrom: json['receivedFrom'] as String?,
     );
   }
 
@@ -71,6 +80,8 @@ class StoredGifticon {
     String? couponNumber,
     DateTime? createdAt,
     DateTime? usedAt,
+    DateTime? sharedAt,
+    String? receivedFrom,
   }) {
     return StoredGifticon(
       id: id ?? this.id,
@@ -81,6 +92,8 @@ class StoredGifticon {
       couponNumber: couponNumber ?? this.couponNumber,
       createdAt: createdAt ?? this.createdAt,
       usedAt: usedAt ?? this.usedAt,
+      sharedAt: sharedAt ?? this.sharedAt,
+      receivedFrom: receivedFrom ?? this.receivedFrom,
     );
   }
 }

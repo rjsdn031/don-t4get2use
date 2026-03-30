@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "331677584932",
+    "firebase_url": "https://don-t4get2use-default-rtdb.firebaseio.com",
+    "project_id": "don-t4get2use",
+    "storage_bucket": "don-t4get2use.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:331677584932:android:bcb00f4e3a0dec6b3712b1",
+        "android_client_info": {
+          "package_name": "lab.p4c.dont4get2use2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDTRc7vfePmgCtqymLPJ3Gl7RD-Hk6BZAE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:331677584932:android:538fc2f0381dff283712b1",
+        "android_client_info": {
+          "package_name": "p4c.lab.dont4get2use"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDTRc7vfePmgCtqymLPJ3Gl7RD-Hk6BZAE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

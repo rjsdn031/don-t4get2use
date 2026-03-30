@@ -29,7 +29,6 @@ class _GifticonListPageState extends State<GifticonListPage>
   late final GifticonNotificationService _notificationService;
 
   StreamSubscription<dynamic>? _screenshotSubscription;
-  StreamSubscription<dynamic>? _hiveWatchSubscription;
 
   Timer? _pollingTimer;
   int _pollingCount = 0;
@@ -59,7 +58,6 @@ class _GifticonListPageState extends State<GifticonListPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _screenshotSubscription?.cancel();
-    _hiveWatchSubscription?.cancel();
     _stopPolling();
     super.dispose();
   }
@@ -353,6 +351,7 @@ class _GifticonListPageState extends State<GifticonListPage>
           item: item,
           storageService: _storageService,
           notificationService: _notificationService,
+          sharingService: _services.sharingService,
         ),
       ),
     );
@@ -598,6 +597,12 @@ class _GifticonListPageState extends State<GifticonListPage>
         ? '만료됨'
         : null;
 
+    final shareLabel = item.isReceived
+        ? '공유받음'
+        : item.isShared
+        ? '공유됨'
+        : null;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Opacity(
@@ -634,8 +639,30 @@ class _GifticonListPageState extends State<GifticonListPage>
             title: Row(
               children: [
                 Expanded(child: Text(item.itemName ?? '상품명 없음')),
+                if (shareLabel != null) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: (item.isReceived ? Colors.purple : Colors.blue)
+                          .withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      shareLabel,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: item.isReceived
+                            ? Colors.purple.shade400
+                            : Colors.blue.shade400,
+                      ),
+                    ),
+                  ),
+                ],
                 if (statusLabel != null) ...[
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 7, vertical: 2),
