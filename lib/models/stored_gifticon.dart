@@ -8,9 +8,9 @@ class StoredGifticon {
   final DateTime createdAt;
   final DateTime? usedAt;
   final DateTime? sharedAt;
-  final String? receivedFrom;     // owner 기기 ID
-  final String? ownerNickname;    // 표시용 닉네임
-  final String? usedByNickname;   // 누가 사용했는지 표시용 닉네임
+  final String? receivedFrom;
+  final String? ownerNickname;
+  final String? usedByNickname;
 
   const StoredGifticon({
     required this.id,
@@ -31,15 +31,17 @@ class StoredGifticon {
   bool get isShared => sharedAt != null;
   bool get isReceived => receivedFrom != null;
 
-  bool get isExpired {
+  bool isExpiredAt(DateTime now) {
     if (expiresAt == null) return false;
-    final today = DateTime.now();
     final expiry = DateTime(expiresAt!.year, expiresAt!.month, expiresAt!.day);
-    final todayDate = DateTime(today.year, today.month, today.day);
-    return expiry.isBefore(todayDate);
+    final today = DateTime(now.year, now.month, now.day);
+    return expiry.isBefore(today);
   }
 
-  bool get isInactive => isUsed || isExpired;
+  bool isInactiveAt(DateTime now) => isUsed || isExpiredAt(now);
+
+  bool get isExpired => isExpiredAt(DateTime.now());
+  bool get isInactive => isInactiveAt(DateTime.now());
 
   Map<String, dynamic> toJson() => {
     'id': id,

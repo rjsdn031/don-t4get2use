@@ -6,21 +6,23 @@ import 'package:timezone/timezone.dart' as tz;
 import '../models/stored_gifticon.dart';
 import 'exact_alarm_permission_service.dart';
 import 'gifticon_sharing_service.dart';
+import 'now_provider.dart';
 
 class GifticonNotificationService {
   GifticonNotificationService(
       this._notifications, {
         ExactAlarmPermissionService? exactAlarmPermissionService,
         GifticonSharingService? sharingService,
+        NowProvider? nowProvider,
       })  : _exactAlarmPermissionService =
       exactAlarmPermissionService ?? ExactAlarmPermissionService(),
-        _sharingService = sharingService;
+        _sharingService = sharingService,
+        _nowProvider = nowProvider ?? SystemNowProvider();
 
   final FlutterLocalNotificationsPlugin _notifications;
   final ExactAlarmPermissionService _exactAlarmPermissionService;
-
-  /// 공유 기능이 활성화된 경우에만 주입 (없으면 공유 스킵)
   final GifticonSharingService? _sharingService;
+  final NowProvider _nowProvider;
 
   static const String _pipelineChannelId = 'gifticon_pipeline';
   static const String _pipelineChannelName = '기프티콘 저장 알림';
@@ -80,8 +82,7 @@ class GifticonNotificationService {
       enableVibration: true,
     );
 
-    final android = _notifications
-        .resolvePlatformSpecificImplementation<
+    final android = _notifications.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
 
     await android?.createNotificationChannel(pipelineChannel);
@@ -98,8 +99,7 @@ class GifticonNotificationService {
   }
 
   Future<bool> requestNotificationPermission() async {
-    final android = _notifications
-        .resolvePlatformSpecificImplementation<
+    final android = _notifications.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
 
     final granted = await android?.requestNotificationsPermission();
@@ -107,8 +107,7 @@ class GifticonNotificationService {
   }
 
   Future<bool> hasNotificationPermission() async {
-    final android = _notifications
-        .resolvePlatformSpecificImplementation<
+    final android = _notifications.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
 
     final granted = await android?.areNotificationsEnabled();
@@ -177,7 +176,6 @@ class GifticonNotificationService {
       payload: stored.id,
     );
 
-    // 1일 전 알림 스케줄 + 공유 업로드 트리거
     final oneDayBefore = _at9am(expiresAt.subtract(const Duration(days: 1)));
 
     await _scheduleExpiryNotification(
@@ -192,10 +190,7 @@ class GifticonNotificationService {
       payload: stored.id,
     );
 
-    // 1일 전 시점이 아직 안 지났으면 공유 업로드 예약
-    // (실제 업로드는 oneDayBefore 시점에 앱이 켜져 있어야 동작하므로
-    //  지금 당장 업로드 시도 — 이미 sharedAt이 있으면 내부에서 스킵됨)
-    if (oneDayBefore.isAfter(DateTime.now())) {
+    if (oneDayBefore.isAfter(_nowProvider.now())) {
       _sharingService?.uploadForSharing(stored).catchError((e) {
         debugPrint('[Gifticon][Notification] uploadForSharing error: $e');
       });
@@ -225,8 +220,6 @@ class GifticonNotificationService {
       notificationDetails: details,
       payload: 'debug_now',
     );
-
-    debugPrint('[Gifticon][Notification] immediate debug notification shown');
   }
 
   Future<void> cancelExpiryNotifications(String gifticonId) async {
@@ -253,8 +246,7 @@ class GifticonNotificationService {
   Future<bool> scheduleDebugTestNotification({
     Duration delay = const Duration(seconds: 10),
   }) async {
-    final android = _notifications
-        .resolvePlatformSpecificImplementation<
+    final android = _notifications.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
 
     final notificationsEnabled = await android?.areNotificationsEnabled();
@@ -278,7 +270,7 @@ class GifticonNotificationService {
       return false;
     }
 
-    final scheduledAt = DateTime.now().add(delay);
+    final scheduledAt = _nowProvider.now().add(delay);
 
     const androidDetails = AndroidNotificationDetails(
       _expiryChannelId,
@@ -322,7 +314,7 @@ class GifticonNotificationService {
     required String body,
     required String payload,
   }) async {
-    if (!scheduledAt.isAfter(DateTime.now())) return;
+    if (!scheduledAt.isAfter(_nowProvider.now())) return;
 
     const androidDetails = AndroidNotificationDetails(
       _expiryChannelId,

@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/gifticon_models.dart';
 import '../models/stored_gifticon.dart';
+import 'now_provider.dart';
 
 class SaveGifticonResult {
   final StoredGifticon gifticon;
@@ -19,8 +20,13 @@ class SaveGifticonResult {
 }
 
 class GifticonStorageService {
+  GifticonStorageService({
+    NowProvider? nowProvider,
+  }) : _nowProvider = nowProvider ?? SystemNowProvider();
+
   static const String _boxName = 'gifticons';
   final Uuid _uuid = const Uuid();
+  final NowProvider _nowProvider;
 
   Future<void> init() async {
     if (!Hive.isBoxOpen(_boxName)) {
@@ -58,7 +64,7 @@ class GifticonStorageService {
       itemName: info.itemName,
       expiresAt: info.expiresAt,
       couponNumber: info.couponNumber,
-      createdAt: DateTime.now(),
+      createdAt: _nowProvider.now(),
     );
 
     final box = Hive.box(_boxName);
@@ -93,7 +99,7 @@ class GifticonStorageService {
     if (existing.isUsed) return existing;
 
     final updated = existing.copyWith(
-      usedAt: DateTime.now(),
+      usedAt: _nowProvider.now(),
       usedByNickname: myNickname ?? existing.usedByNickname,
     );
     await box.put(id, updated.toJson());
@@ -110,7 +116,7 @@ class GifticonStorageService {
     final existing = StoredGifticon.fromJson(raw as Map);
     if (existing.sharedAt != null) return;
 
-    final updated = existing.copyWith(sharedAt: DateTime.now());
+    final updated = existing.copyWith(sharedAt: _nowProvider.now());
     await box.put(id, updated.toJson());
     debugPrint('[Gifticon][Storage] marked as shared: id=$id');
   }
@@ -152,7 +158,7 @@ class GifticonStorageService {
       itemName: itemName,
       expiresAt: expiresAt,
       couponNumber: couponNumber,
-      createdAt: DateTime.now(),
+      createdAt: _nowProvider.now(),
       receivedFrom: receivedFrom,
       ownerNickname: ownerNickname,
     );
@@ -177,7 +183,7 @@ class GifticonStorageService {
     }
 
     final updated = existing.copyWith(
-      usedAt: existing.usedAt ?? DateTime.now(),
+      usedAt: existing.usedAt ?? _nowProvider.now(),
       usedByNickname: usedByNickname ?? existing.usedByNickname,
     );
 

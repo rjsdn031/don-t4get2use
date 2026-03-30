@@ -9,6 +9,7 @@ import '../modules/screenshot_event_listener_module.dart';
 import '../services/gifticon_notification_service.dart';
 import '../services/gifticon_services.dart';
 import '../services/gifticon_storage_service.dart';
+import '../services/now_provider.dart';
 import '../services/screenshot_automation_service.dart';
 import 'gifticon_analysis_page.dart';
 import 'gifticon_detail_page.dart';
@@ -17,9 +18,11 @@ class GifticonListPage extends StatefulWidget {
   const GifticonListPage({
     super.key,
     this.servicesOverride,
+    this.nowProviderOverride,
   });
 
   final GifticonServices? servicesOverride;
+  final NowProvider? nowProviderOverride;
 
   @override
   State<GifticonListPage> createState() => _GifticonListPageState();
@@ -32,6 +35,7 @@ class _GifticonListPageState extends State<GifticonListPage>
   late final ScreenshotAutomationService _automationService;
   late final ScreenshotEventListenerModule _screenshotEventListener;
   late final GifticonNotificationService _notificationService;
+  late final NowProvider _nowProvider;
 
   StreamSubscription<dynamic>? _screenshotSubscription;
 
@@ -95,7 +99,9 @@ class _GifticonListPageState extends State<GifticonListPage>
     try {
       await _ensureNotificationPermission();
 
-      _services = widget.servicesOverride ?? await GifticonServices.create();
+      _nowProvider = widget.nowProviderOverride ?? SystemNowProvider();
+      _services =
+          widget.servicesOverride ?? await GifticonServices.create(nowProvider: _nowProvider);
       _storageService = _services.storageService;
       _automationService = _services.automationService;
       _screenshotEventListener = ScreenshotEventListenerModule();
@@ -519,8 +525,9 @@ class _GifticonListPageState extends State<GifticonListPage>
 
   @override
   Widget build(BuildContext context) {
-    final activeItems = _items.where((e) => !e.isInactive).toList();
-    final inactiveItems = _items.where((e) => e.isInactive).toList();
+    final now = _nowProvider.now();
+    final activeItems = _items.where((e) => !e.isInactiveAt(now)).toList();
+    final inactiveItems = _items.where((e) => e.isInactiveAt(now)).toList();
 
     Widget listSection;
 
@@ -623,9 +630,11 @@ class _GifticonListPageState extends State<GifticonListPage>
   }
 
   Widget _buildGifticonCard(StoredGifticon item, {required bool muted}) {
+    final now = _nowProvider.now();
+
     final statusLabel = item.isUsed
         ? '사용함'
-        : item.isExpired
+        : item.isExpiredAt(now)
         ? '만료됨'
         : null;
 

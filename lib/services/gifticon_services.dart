@@ -1,10 +1,10 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../modules/android_latest_image_finder_module.dart';
+import '../modules/barcode_module.dart';
 import '../modules/gifticon_detector_module.dart';
 import '../modules/image_picker_module.dart';
 import '../modules/ocr_module.dart';
-import '../modules/barcode_module.dart';
 import 'device_id_service.dart';
 import 'fcm_service.dart';
 import 'gifticon_notification_service.dart';
@@ -12,6 +12,7 @@ import 'gifticon_pipeline_service.dart';
 import 'gifticon_sharing_service.dart';
 import 'gifticon_storage_service.dart';
 import 'gifticon_work_service.dart';
+import 'now_provider.dart';
 import 'screenshot_automation_service.dart';
 
 const String _baseUrl = 'https://d42u-server.vercel.app';
@@ -37,8 +38,14 @@ class GifticonServices {
     required this.fcmService,
   });
 
-  static Future<GifticonServices> create() async {
-    final storageService = GifticonStorageService();
+  static Future<GifticonServices> create({
+    NowProvider? nowProvider,
+  }) async {
+    final resolvedNowProvider = nowProvider ?? SystemNowProvider();
+
+    final storageService = GifticonStorageService(
+      nowProvider: resolvedNowProvider,
+    );
     await storageService.init();
 
     final deviceIdService = DeviceIdService(baseUrl: _baseUrl);
@@ -53,6 +60,7 @@ class GifticonServices {
     final notificationService = GifticonNotificationService(
       notificationsPlugin,
       sharingService: sharingService,
+      nowProvider: resolvedNowProvider,
     );
     await notificationService.init();
 
@@ -80,10 +88,7 @@ class GifticonServices {
       notifications: notificationsPlugin,
     );
 
-    // 기기 등록 (FCM 토큰 갱신 포함) — 실패해도 앱 실행 계속
     await deviceIdService.registerDevice();
-
-    // FCM 포그라운드/탭 핸들러 등록
     await fcmService.init();
 
     return GifticonServices(
