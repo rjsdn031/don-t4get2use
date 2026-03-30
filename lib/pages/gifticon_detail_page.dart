@@ -43,6 +43,12 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
     return '$y-$m-$d';
   }
 
+  String _displayOwner() {
+    final owner = _item.ownerNickname ?? _item.receivedFrom;
+    if (owner == null || owner.isEmpty) return '-';
+    return '$owner님';
+  }
+
   Widget _buildInfoTile(String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -106,10 +112,16 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
     setState(() => _isMarkingUsed = true);
 
     try {
-      final updated = await widget.storageService.markAsUsed(_item.id);
+      final myNickname = await widget.sharingService
+          ?.deviceIdService
+          .getNickname();
+
+      final updated = await widget.storageService.markAsUsed(
+        _item.id,
+        myNickname: myNickname,
+      );
       await widget.notificationService.cancelExpiryNotifications(_item.id);
 
-      // 공유된 기프티콘이면 서버 + 상대방 FCM 동기화
       if (widget.sharingService != null &&
           (_item.isShared || _item.isReceived)) {
         await widget.sharingService!.markAsUsedRemote(
@@ -161,7 +173,10 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
                   0.2126, 0.7152, 0.0722, 0, 0,
                   0,      0,      0,      1, 0,
                 ])
-                    : const ColorFilter.mode(Colors.transparent, BlendMode.color),
+                    : const ColorFilter.mode(
+                  Colors.transparent,
+                  BlendMode.color,
+                ),
                 child: Opacity(
                   opacity: isInactive ? 0.5 : 1.0,
                   child: Image.file(
@@ -186,12 +201,15 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
                     _buildInfoTile('상품명', _item.itemName ?? '-'),
                     _buildInfoTile('유효기간', _formatDate(_item.expiresAt)),
                     _buildInfoTile('쿠폰번호', _item.couponNumber ?? '-'),
-                    if (_item.isUsed)
+                    if (_item.isUsed) ...[
                       _buildInfoTile('사용일', _formatDate(_item.usedAt)),
+                      if ((_item.usedByNickname ?? '').isNotEmpty)
+                        _buildInfoTile('사용한 분', '${_item.usedByNickname}님'),
+                    ],
                     if (_item.isShared)
                       _buildInfoTile('공유일', _formatDate(_item.sharedAt)),
                     if (_item.isReceived)
-                      _buildInfoTile('공유한 분', _item.receivedFrom ?? '-'),
+                      _buildInfoTile('공유한 분', _displayOwner()),
                   ],
                 ),
               ),

@@ -1,7 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/stored_gifticon.dart';
@@ -26,7 +26,6 @@ class GifticonSharingService {
   final GifticonStorageService storageService;
   final DeviceIdService deviceIdService;
 
-  /// 만료 1일 전 호출 — Storage 업로드 + 서버에 공유 등록
   Future<void> uploadForSharing(StoredGifticon stored) async {
     try {
       if (stored.sharedAt != null) {
@@ -35,25 +34,19 @@ class GifticonSharingService {
       }
 
       final deviceId = await deviceIdService.getDeviceId();
+      final imageBase64 = await _readImageAsBase64(stored.imagePath);
 
-      // 1. Firebase Storage에 이미지 업로드
-      final imageUrl = await _uploadImageToStorage(
-        localPath: stored.imagePath,
-        gifticonId: stored.id,
-      );
-
-      if (imageUrl == null) {
-        debugPrint('[Sharing] image upload failed: id=${stored.id}');
+      if (imageBase64 == null) {
+        debugPrint('[Sharing] image base64 encode failed: id=${stored.id}');
         return;
       }
 
-      // 2. 서버에 공유 등록
       await _dio.post<void>(
         '/api/gifticons/share',
         data: {
           'gifticonId': stored.id,
           'ownerId': deviceId,
-          'imageUrl': imageUrl,
+          'imageBase64': imageBase64,
           'merchantName': stored.merchantName,
           'itemName': stored.itemName,
           'couponNumber': stored.couponNumber,
@@ -61,17 +54,13 @@ class GifticonSharingService {
         },
       );
 
-      // 3. 로컬 Hive에 sharedAt 업데이트
       await storageService.markAsShared(stored.id);
-
       debugPrint('[Sharing] uploaded for sharing: id=${stored.id}');
     } catch (e) {
       debugPrint('[Sharing] uploadForSharing failed: $e');
-      // 실패해도 앱 동작에 영향 없음
     }
   }
 
-  /// 사용함 처리 — 서버 Firestore + 상대방 FCM 동기화
   Future<void> markAsUsedRemote({
     required String gifticonId,
   }) async {
@@ -92,18 +81,17 @@ class GifticonSharingService {
     }
   }
 
-  /// 공유받은 기프티콘을 로컬에 저장
   Future<StoredGifticon?> receiveSharedGifticon({
     required String gifticonId,
     required String imageUrl,
     required String ownerId,
+    String? ownerNickname,
     required String? merchantName,
     required String? itemName,
     required String? couponNumber,
     required DateTime expiresAt,
   }) async {
     try {
-      // Storage에서 이미지 다운로드 → 로컬 저장
       final localPath = await _downloadImageFromStorage(
         imageUrl: imageUrl,
         gifticonId: gifticonId,
@@ -122,9 +110,12 @@ class GifticonSharingService {
         couponNumber: couponNumber,
         expiresAt: expiresAt,
         receivedFrom: ownerId,
+        ownerNickname: ownerNickname,
       );
 
-      debugPrint('[Sharing] received gifticon saved: id=$gifticonId');
+      debugPrint(
+        '[Sharing] received gifticon saved: id=$gifticonId ownerNickname=$ownerNickname',
+      );
       return stored;
     } catch (e) {
       debugPrint('[Sharing] receiveSharedGifticon failed: $e');
@@ -132,10 +123,7 @@ class GifticonSharingService {
     }
   }
 
-  Future<String?> _uploadImageToStorage({
-    required String localPath,
-    required String gifticonId,
-  }) async {
+  Future<String?> _readImageAsBase64(String localPath) async {
     try {
       final file = File(localPath);
       if (!await file.exists()) {
@@ -143,20 +131,10 @@ class GifticonSharingService {
         return null;
       }
 
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('gifticons/$gifticonId.jpg');
-
-      final task = await ref.putFile(
-        file,
-        SettableMetadata(contentType: 'image/jpeg'),
-      );
-
-      final url = await task.ref.getDownloadURL();
-      debugPrint('[Sharing] uploaded to storage: $url');
-      return url;
+      final bytes = await file.readAsBytes();
+      return base64Encode(bytes);
     } catch (e) {
-      debugPrint('[Sharing] storage upload failed: $e');
+      debugPrint('[Sharing] base64 encode failed: $e');
       return null;
     }
   }
@@ -166,12 +144,22 @@ class GifticonSharingService {
     required String gifticonId,
   }) async {
     try {
-      final ref = FirebaseStorage.instance.refFromURL(imageUrl);
       final tempDir = Directory.systemTemp;
       final localFile = File('${tempDir.path}/gifticon_received_$gifticonId.jpg');
 
-      await ref.writeToFile(localFile);
-      debugPrint('[Sharing] downloaded from storage: ${localFile.path}');
+      final response = await _dio.get<List<int>>(
+        imageUrl,
+        options: Options(responseType: ResponseType.bytes),
+      );
+
+      final bytes = response.data;
+      if (bytes == null) {
+        debugPrint('[Sharing] download response empty');
+        return null;
+      }
+
+      await localFile.writeAsBytes(bytes, flush: true);
+      debugPrint('[Sharing] downloaded from url: ${localFile.path}');
       return localFile.path;
     } catch (e) {
       debugPrint('[Sharing] storage download failed: $e');

@@ -6,7 +6,6 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'gifticon_sharing_service.dart';
 
-/// 백그라운드 FCM 핸들러 — 최상위 함수여야 함
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   debugPrint('[FCM][Background] message received: ${message.messageId}');
@@ -21,13 +20,15 @@ Future<void> _handleGifticonMessage(RemoteMessage message) async {
 
   switch (type) {
     case 'gifticon_received':
-    // 매칭된 기프티콘 수신 — 로컬 저장은 FcmService.init() 이후 포그라운드에서 처리
-    // 백그라운드에서는 Hive 접근이 불안정하므로 data만 로깅
-      debugPrint('[FCM] gifticon_received: gifticonId=${data['gifticonId']}');
+      debugPrint(
+        '[FCM] gifticon_received: gifticonId=${data['gifticonId']} ownerNickname=${data['ownerNickname']}',
+      );
       break;
 
     case 'gifticon_used':
-      debugPrint('[FCM] gifticon_used: gifticonId=${data['gifticonId']}');
+      debugPrint(
+        '[FCM] gifticon_used: gifticonId=${data['gifticonId']} usedByNickname=${data['usedByNickname']}',
+      );
       break;
 
     default:
@@ -45,13 +46,9 @@ class FcmService {
   final FlutterLocalNotificationsPlugin _notifications;
 
   Future<void> init() async {
-    // 포그라운드 메시지 수신
     FirebaseMessaging.onMessage.listen(_onForegroundMessage);
-
-    // 앱이 백그라운드에 있다가 알림 탭으로 열린 경우
     FirebaseMessaging.onMessageOpenedApp.listen(_onMessageOpenedApp);
 
-    // 앱이 완전히 종료된 상태에서 알림 탭으로 열린 경우
     final initial = await FirebaseMessaging.instance.getInitialMessage();
     if (initial != null) {
       debugPrint('[FCM] launched from terminated via notification');
@@ -73,7 +70,6 @@ class FcmService {
       await _handleGifticonUsed(data);
     }
 
-    // 포그라운드에서는 자동으로 알림이 안 뜨므로 직접 표시
     if (message.notification != null) {
       await _showLocalNotification(message);
     }
@@ -97,6 +93,7 @@ class FcmService {
       final gifticonId = data['gifticonId'] as String?;
       final imageUrl = data['imageUrl'] as String?;
       final ownerId = data['ownerId'] as String?;
+      final ownerNickname = data['ownerNickname'] as String?;
       final expiresAtStr = data['expiresAt'] as String?;
 
       if (gifticonId == null || imageUrl == null || expiresAtStr == null) {
@@ -114,6 +111,7 @@ class FcmService {
         gifticonId: gifticonId,
         imageUrl: imageUrl,
         ownerId: ownerId ?? '',
+        ownerNickname: ownerNickname,
         merchantName: data['merchantName'] as String?,
         itemName: data['itemName'] as String?,
         couponNumber: data['couponNumber'] as String?,
@@ -127,11 +125,16 @@ class FcmService {
   Future<void> _handleGifticonUsed(Map<String, dynamic> data) async {
     try {
       final gifticonId = data['gifticonId'] as String?;
+      final usedByNickname = data['usedByNickname'] as String?;
       if (gifticonId == null) return;
 
-      // 로컬 Hive에서 해당 기프티콘 사용 처리
-      await sharingService.storageService.markAsUsedIfExists(gifticonId);
-      debugPrint('[FCM] gifticon_used handled locally: id=$gifticonId');
+      await sharingService.storageService.markAsUsedIfExists(
+        gifticonId,
+        usedByNickname: usedByNickname,
+      );
+      debugPrint(
+        '[FCM] gifticon_used handled locally: id=$gifticonId usedByNickname=$usedByNickname',
+      );
     } catch (e) {
       debugPrint('[FCM] _handleGifticonUsed error: $e');
     }
@@ -150,7 +153,7 @@ class FcmService {
     );
 
     await _notifications.show(
-      id: message.hashCode,
+      id: message.hashCode.abs(),
       title: notification.title,
       body: notification.body,
       notificationDetails: const NotificationDetails(android: androidDetails),

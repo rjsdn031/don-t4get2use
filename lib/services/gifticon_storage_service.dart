@@ -8,8 +8,6 @@ import 'package:uuid/uuid.dart';
 import '../models/gifticon_models.dart';
 import '../models/stored_gifticon.dart';
 
-/// [saveGifticon]의 반환값.
-/// [isDuplicate]가 true이면 기존에 저장된 [gifticon]을 그대로 반환한 것.
 class SaveGifticonResult {
   final StoredGifticon gifticon;
   final bool isDuplicate;
@@ -86,22 +84,24 @@ class GifticonStorageService {
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
-  Future<StoredGifticon> markAsUsed(String id) async {
+  Future<StoredGifticon> markAsUsed(String id, {String? myNickname}) async {
     final box = Hive.box(_boxName);
     final raw = box.get(id);
     if (raw == null) throw Exception('기프티콘을 찾을 수 없습니다: $id');
 
     final existing = StoredGifticon.fromJson(raw as Map);
-    if (existing.isUsed) return existing; // 이미 사용됨
+    if (existing.isUsed) return existing;
 
-    final updated = existing.copyWith(usedAt: DateTime.now());
+    final updated = existing.copyWith(
+      usedAt: DateTime.now(),
+      usedByNickname: myNickname ?? existing.usedByNickname,
+    );
     await box.put(id, updated.toJson());
 
-    debugPrint('[Gifticon][Storage] marked as used: id=$id');
+    debugPrint('[Gifticon][Storage] marked as used: id=$id nickname=$myNickname');
     return updated;
   }
 
-  /// 공유 완료 시 sharedAt 업데이트
   Future<void> markAsShared(String id) async {
     final box = Hive.box(_boxName);
     final raw = box.get(id);
@@ -115,7 +115,6 @@ class GifticonStorageService {
     debugPrint('[Gifticon][Storage] marked as shared: id=$id');
   }
 
-  /// FCM으로 공유받은 기프티콘을 로컬에 저장
   Future<StoredGifticon> saveReceivedGifticon({
     required String gifticonId,
     required String localImagePath,
@@ -124,13 +123,21 @@ class GifticonStorageService {
     required String? couponNumber,
     required DateTime expiresAt,
     required String receivedFrom,
+    String? ownerNickname,
   }) async {
     final box = Hive.box(_boxName);
 
-    // 이미 있으면 그대로 반환
     final existing = box.get(gifticonId);
     if (existing != null) {
-      return StoredGifticon.fromJson(existing as Map);
+      final stored = StoredGifticon.fromJson(existing as Map);
+
+      if (stored.ownerNickname == ownerNickname || ownerNickname == null) {
+        return stored;
+      }
+
+      final updated = stored.copyWith(ownerNickname: ownerNickname);
+      await box.put(gifticonId, updated.toJson());
+      return updated;
     }
 
     final savedImagePath = await _copyImageToAppDirectory(
@@ -147,6 +154,7 @@ class GifticonStorageService {
       couponNumber: couponNumber,
       createdAt: DateTime.now(),
       receivedFrom: receivedFrom,
+      ownerNickname: ownerNickname,
     );
 
     await box.put(gifticonId, stored.toJson());
@@ -154,18 +162,29 @@ class GifticonStorageService {
     return stored;
   }
 
-  /// FCM gifticon_used 수신 시 — id가 있으면 로컬도 사용 처리
-  Future<void> markAsUsedIfExists(String id) async {
+  Future<void> markAsUsedIfExists(
+      String id, {
+        String? usedByNickname,
+      }) async {
     final box = Hive.box(_boxName);
     final raw = box.get(id);
     if (raw == null) return;
 
     final existing = StoredGifticon.fromJson(raw as Map);
-    if (existing.isUsed) return;
 
-    final updated = existing.copyWith(usedAt: DateTime.now());
+    if (existing.isUsed && existing.usedByNickname == usedByNickname) {
+      return;
+    }
+
+    final updated = existing.copyWith(
+      usedAt: existing.usedAt ?? DateTime.now(),
+      usedByNickname: usedByNickname ?? existing.usedByNickname,
+    );
+
     await box.put(id, updated.toJson());
-    debugPrint('[Gifticon][Storage] markAsUsedIfExists: id=$id');
+    debugPrint(
+      '[Gifticon][Storage] markAsUsedIfExists: id=$id usedByNickname=$usedByNickname',
+    );
   }
 
   Future<void> deleteGifticon(String id) async {
@@ -204,7 +223,6 @@ class GifticonStorageService {
     final normalizedItem = _normalize(info.itemName);
     final normalizedExpiresAt = _normalizeDate(info.expiresAt);
 
-    // 식별할 수 있는 필드가 하나도 없으면 중복 판정 불가
     if (normalizedMerchant == null &&
         normalizedItem == null &&
         normalizedExpiresAt == null) {

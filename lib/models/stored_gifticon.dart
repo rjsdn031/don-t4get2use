@@ -7,8 +7,10 @@ class StoredGifticon {
   final String? couponNumber;
   final DateTime createdAt;
   final DateTime? usedAt;
-  final DateTime? sharedAt;    // 내가 공유한 시각
-  final String? receivedFrom;  // 공유받은 경우 원래 owner 기기 ID
+  final DateTime? sharedAt;
+  final String? receivedFrom;     // owner 기기 ID
+  final String? ownerNickname;    // 표시용 닉네임
+  final String? usedByNickname;   // 누가 사용했는지 표시용 닉네임
 
   const StoredGifticon({
     required this.id,
@@ -21,6 +23,8 @@ class StoredGifticon {
     this.usedAt,
     this.sharedAt,
     this.receivedFrom,
+    this.ownerNickname,
+    this.usedByNickname,
   });
 
   bool get isUsed => usedAt != null;
@@ -48,6 +52,8 @@ class StoredGifticon {
     'usedAt': usedAt?.toIso8601String(),
     'sharedAt': sharedAt?.toIso8601String(),
     'receivedFrom': receivedFrom,
+    'ownerNickname': ownerNickname,
+    'usedByNickname': usedByNickname,
   };
 
   factory StoredGifticon.fromJson(Map<dynamic, dynamic> json) {
@@ -68,6 +74,8 @@ class StoredGifticon {
           ? DateTime.tryParse(json['sharedAt'] as String)
           : null,
       receivedFrom: json['receivedFrom'] as String?,
+      ownerNickname: json['ownerNickname'] as String?,
+      usedByNickname: json['usedByNickname'] as String?,
     );
   }
 
@@ -82,6 +90,8 @@ class StoredGifticon {
     DateTime? usedAt,
     DateTime? sharedAt,
     String? receivedFrom,
+    String? ownerNickname,
+    String? usedByNickname,
   }) {
     return StoredGifticon(
       id: id ?? this.id,
@@ -94,6 +104,8 @@ class StoredGifticon {
       usedAt: usedAt ?? this.usedAt,
       sharedAt: sharedAt ?? this.sharedAt,
       receivedFrom: receivedFrom ?? this.receivedFrom,
+      ownerNickname: ownerNickname ?? this.ownerNickname,
+      usedByNickname: usedByNickname ?? this.usedByNickname,
     );
   }
 }

@@ -46,6 +46,7 @@ class _GifticonListPageState extends State<GifticonListPage>
   bool _canScheduleExactAlarms = false;
 
   List<StoredGifticon> _items = const [];
+  String? _myNickname;
 
   @override
   void initState() {
@@ -98,6 +99,7 @@ class _GifticonListPageState extends State<GifticonListPage>
       if (!mounted) return;
 
       _isInitialized = true;
+      await _loadMyNickname();
       await _loadItems();
       await _refreshExactAlarmPermissionStatus();
 
@@ -332,6 +334,14 @@ class _GifticonListPageState extends State<GifticonListPage>
     });
   }
 
+  Future<void> _loadMyNickname() async {
+    final nickname = await _services.deviceIdService.getNickname();
+    if (!mounted) return;
+    setState(() {
+      _myNickname = nickname;
+    });
+  }
+
   Future<void> _deleteItem(StoredGifticon item) async {
     await _notificationService.cancelExpiryNotifications(item.id);
     await _storageService.deleteGifticon(item.id);
@@ -553,7 +563,24 @@ class _GifticonListPageState extends State<GifticonListPage>
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          children: [listSection],
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${_myNickname ?? '사용자'}님, 안녕하세요',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '보관 중인 기프티콘을 확인해보세요',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 16),
+            listSection,
+          ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
