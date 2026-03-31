@@ -35,6 +35,12 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
   String _statusText = '아직 실행 전';
   File? _selectedImage;
 
+  final TextEditingController _merchantController = TextEditingController();
+  final TextEditingController _itemNameController = TextEditingController();
+  final TextEditingController _couponNumberController = TextEditingController();
+
+  DateTime? _editedExpiresAt;
+
   @override
   void initState() {
     super.initState();
@@ -66,6 +72,9 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
 
   @override
   void dispose() {
+    _merchantController.dispose();
+    _itemNameController.dispose();
+    _couponNumberController.dispose();
     _pipeline.dispose();
     super.dispose();
   }
@@ -116,6 +125,7 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
 
       setState(() {
         _parsedInfo = parsedInfo;
+        _applyParsedInfoToForm(parsedInfo);
         _statusText = '기프티콘 분석이 완료되었습니다.';
       });
     } catch (e) {
@@ -139,9 +149,21 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
     });
 
     try {
+      final editedInfo = _buildEditedInfo();
+
+      if ((editedInfo.itemName ?? '').trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('상품 이름을 입력해 주세요.')),
+        );
+        setState(() {
+          _saving = false;
+        });
+        return;
+      }
+
       final result = await _storageService.saveGifticon(
         sourceImagePath: _selectedImage!.path,
-        info: _parsedInfo!,
+        info: editedInfo,
       );
 
       if (!mounted) return;
@@ -212,6 +234,51 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
     );
   }
 
+  void _applyParsedInfoToForm(GifticonInfo info) {
+    _merchantController.text = info.merchantName ?? '';
+    _itemNameController.text = info.itemName ?? '';
+    _couponNumberController.text = info.couponNumber ?? '';
+    _editedExpiresAt = info.expiresAt;
+  }
+
+  GifticonInfo _buildEditedInfo() {
+    final current = _parsedInfo!;
+    return GifticonInfo(
+      merchantName: _merchantController.text.trim().isEmpty
+          ? null
+          : _merchantController.text.trim(),
+      itemName: _itemNameController.text.trim().isEmpty
+          ? null
+          : _itemNameController.text.trim(),
+      expiresAt: _editedExpiresAt,
+      couponNumber: _couponNumberController.text.trim().isEmpty
+          ? null
+          : _couponNumberController.text.trim(),
+      rawText: current.rawText,
+    );
+  }
+
+  Future<void> _pickExpiryDate() async {
+    final now = DateTime.now();
+    final initialDate = _editedExpiresAt ?? now;
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 20),
+      helpText: '유효기간 선택',
+      cancelText: '취소',
+      confirmText: '확인',
+    );
+
+    if (picked == null) return;
+
+    setState(() {
+      _editedExpiresAt = picked;
+    });
+  }
+
   String _formatDate(DateTime? date) {
     if (date == null) return '-';
     final y = date.year.toString().padLeft(4, '0');
@@ -266,15 +333,51 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               if (_isGifticon == true && _parsedInfo != null) ...[
-                                _buildInfoTile('교환처', _parsedInfo?.merchantName ?? '-'),
-                                _buildInfoTile('상품 이름', _parsedInfo?.itemName ?? '-'),
-                                _buildInfoTile(
-                                  '유효기간',
-                                  _formatDate(_parsedInfo?.expiresAt),
+                                const Text(
+                                  '인식 결과를 확인하고 필요하면 수정해 주세요.',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
                                 ),
-                                _buildInfoTile(
-                                  '쿠폰 번호',
-                                  _parsedInfo?.couponNumber ?? '-',
+                                const SizedBox(height: 16),
+                                TextField(
+                                  controller: _merchantController,
+                                  decoration: const InputDecoration(
+                                    labelText: '교환처',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                TextField(
+                                  controller: _itemNameController,
+                                  decoration: const InputDecoration(
+                                    labelText: '상품 이름',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                InkWell(
+                                  onTap: _saving ? null : _pickExpiryDate,
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: InputDecorator(
+                                    decoration: const InputDecoration(
+                                      labelText: '유효기간',
+                                      border: OutlineInputBorder(),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(_formatDate(_editedExpiresAt)),
+                                        const Icon(Icons.calendar_today),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                TextField(
+                                  controller: _couponNumberController,
+                                  decoration: const InputDecoration(
+                                    labelText: '쿠폰 번호',
+                                    border: OutlineInputBorder(),
+                                  ),
                                 ),
                               ] else ...[
                                 _buildInfoTile('판별 결과', _statusText),

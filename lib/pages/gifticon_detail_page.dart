@@ -6,6 +6,7 @@ import '../models/stored_gifticon.dart';
 import '../services/gifticon_notification_service.dart';
 import '../services/gifticon_sharing_service.dart';
 import '../services/gifticon_storage_service.dart';
+import 'gifticon_edit_page.dart';
 
 class GifticonDetailPage extends StatefulWidget {
   final StoredGifticon item;
@@ -147,13 +148,102 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
     }
   }
 
+  bool get _canEdit {
+    return !_item.isShared && !_item.isReceived;
+  }
+
+  Future<void> _openEditPage() async {
+    if (_item.isShared || _item.isReceived) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('공유된 기프티콘은 수정할 수 없어요.'),
+        ),
+      );
+      return;
+    }
+
+    final previousItem = _item;
+
+    final updated = await Navigator.push<StoredGifticon>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GifticonEditPage(
+          item: _item,
+          storageService: widget.storageService,
+        ),
+      ),
+    );
+
+    if (!mounted || updated == null) return;
+
+    final changedExpiry =
+        _formatDate(previousItem.expiresAt) != _formatDate(updated.expiresAt);
+
+    try {
+      bool scheduled = true;
+
+      if (changedExpiry) {
+        await widget.notificationService.cancelExpiryNotifications(updated.id);
+
+        if (!updated.isUsed) {
+          scheduled =
+          await widget.notificationService.scheduleExpiryNotifications(
+            updated,
+          );
+        }
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _item = updated;
+      });
+
+      String message = '수정사항이 저장되었습니다.';
+
+      if (changedExpiry && !updated.isUsed) {
+        message = scheduled
+            ? '수정사항이 저장되고 만료 알림이 다시 예약되었습니다.'
+            : '수정사항은 저장되었지만 만료 알림을 다시 등록하지 못했습니다. 알림 권한 또는 기기 설정을 확인해 주세요.';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _item = updated;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '수정사항은 저장되었지만 만료 알림을 다시 등록하지 못했습니다.\n$e',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isInactive = _item.isInactive;
     final statusBadges = _buildStatusBadges();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('기프티콘 보기')),
+      appBar: AppBar(
+        title: const Text('기프티콘 보기'),
+        actions: [
+          if (_canEdit)
+            IconButton(
+              tooltip: '수정',
+              onPressed: _openEditPage,
+              icon: const Icon(Icons.edit_outlined),
+            ),
+        ],
+      ),
       body: SafeArea(
         bottom: true,
         child: SingleChildScrollView(

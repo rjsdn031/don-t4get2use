@@ -175,6 +175,19 @@ class GifticonStorageService {
     return stored;
   }
 
+  Future<StoredGifticon> updateGifticon(StoredGifticon item) async {
+    final box = Hive.box(_boxName);
+    final raw = box.get(item.id);
+
+    if (raw == null) {
+      throw Exception('수정할 기프티콘을 찾을 수 없습니다: ${item.id}');
+    }
+
+    await box.put(item.id, item.toJson());
+    debugPrint('[Gifticon][Storage] updated gifticon: id=${item.id}');
+    return item;
+  }
+
   Future<void> markAsUsedIfExists(
       String id, {
         String? usedByNickname,
