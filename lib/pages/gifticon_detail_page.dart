@@ -36,6 +36,10 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
     _item = widget.item;
   }
 
+  bool get _canEdit {
+    return !_item.isShared && !_item.isReceived;
+  }
+
   String _formatDate(DateTime? date) {
     if (date == null) return '-';
     final y = date.year.toString().padLeft(4, '0');
@@ -148,12 +152,8 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
     }
   }
 
-  bool get _canEdit {
-    return !_item.isShared && !_item.isReceived;
-  }
-
   Future<void> _openEditPage() async {
-    if (_item.isShared || _item.isReceived) {
+    if (!_canEdit) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('공유된 기프티콘은 수정할 수 없어요.'),
@@ -282,7 +282,9 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
                       errorBuilder: (_, __, ___) => Container(
                         height: 240,
                         color: const Color(0xFFF2F2F2),
-                        child: const Center(child: Text('이미지를 불러올 수 없습니다.')),
+                        child: const Center(
+                          child: Text('이미지를 불러올 수 없습니다.'),
+                        ),
                       ),
                     ),
                   ),
