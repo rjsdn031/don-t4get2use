@@ -59,13 +59,20 @@ class GifticonServices {
     final notificationsPlugin = FlutterLocalNotificationsPlugin();
     final notificationService = GifticonNotificationService(
       notificationsPlugin,
-      sharingService: sharingService,
       nowProvider: resolvedNowProvider,
     );
     await notificationService.init();
 
+    final workService = GifticonWorkService();
+
     await notificationService.rescheduleAllExpiryNotifications(
       storageService.getAllGifticons(),
+    );
+
+    await _reschedulePendingAutoShareWorks(
+      storageService: storageService,
+      workService: workService,
+      nowProvider: resolvedNowProvider,
     );
 
     final pipelineService = GifticonPipelineService(
@@ -74,8 +81,6 @@ class GifticonServices {
       barcodeModule: GifticonBarcodeModule(),
       detector: GifticonDetectorModule(),
     );
-
-    final workService = GifticonWorkService();
 
     final automationService = ScreenshotAutomationService(
       latestImageFinder: AndroidLatestImageFinderModule(),
@@ -101,5 +106,37 @@ class GifticonServices {
       sharingService: sharingService,
       fcmService: fcmService,
     );
+  }
+
+  static Future<void> _reschedulePendingAutoShareWorks({
+    required GifticonStorageService storageService,
+    required GifticonWorkService workService,
+    required NowProvider nowProvider,
+  }) async {
+    final now = nowProvider.now();
+
+    for (final stored in storageService.getAllGifticons()) {
+      if (stored.isShared || stored.isUsed || stored.expiresAt == null) {
+        continue;
+      }
+
+      final autoShareAt = DateTime(
+        stored.expiresAt!.year,
+        stored.expiresAt!.month,
+        stored.expiresAt!.day,
+        8,
+        0,
+        0,
+      );
+
+      if (!autoShareAt.isAfter(now)) {
+        continue;
+      }
+
+      await workService.scheduleAutoShareWork(
+        gifticonId: stored.id,
+        initialDelay: autoShareAt.difference(now),
+      );
+    }
   }
 }

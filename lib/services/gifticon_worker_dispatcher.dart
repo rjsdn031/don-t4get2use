@@ -10,6 +10,7 @@ import 'device_id_service.dart';
 import 'gifticon_notification_service.dart';
 import 'gifticon_sharing_service.dart';
 import 'gifticon_storage_service.dart';
+import 'gifticon_work_service.dart';
 
 const String kGifticonParseTask = 'gifticon_parse_task';
 const String kGifticonAutoShareTask = 'gifticon_auto_share_task';
@@ -47,6 +48,8 @@ void callbackDispatcher() {
         }
 
         final storageService = GifticonStorageService();
+        final workService = GifticonWorkService();
+
         await storageService.init();
         await notificationService.init();
 
@@ -68,8 +71,7 @@ void callbackDispatcher() {
 
         if (result.isDuplicate) {
           debugPrint(
-            '[Gifticon][Worker] duplicate — skip notification schedule. '
-                'existing id=${result.gifticon.id}',
+            '[Gifticon][Worker] duplicate — skip notification schedule. existing id=${result.gifticon.id}',
           );
           await notificationService.cancelProcessingNotification();
           debugPrint(
@@ -88,6 +90,37 @@ void callbackDispatcher() {
           debugPrint(
             '[Gifticon][Worker] expiry notifications were deferred until foreground app resumes',
           );
+        }
+
+        final expiresAt = stored.expiresAt;
+        if (expiresAt != null) {
+          final autoShareAt = DateTime(
+            expiresAt.year,
+            expiresAt.month,
+            expiresAt.day,
+            8,
+            0,
+            0,
+          );
+
+          final now = DateTime.now();
+
+          if (autoShareAt.isAfter(now)) {
+            final delay = autoShareAt.difference(now);
+
+            debugPrint(
+              '[Gifticon][Worker] schedule auto share at=$autoShareAt delay=$delay',
+            );
+
+            await workService.scheduleAutoShareWork(
+              gifticonId: stored.id,
+              initialDelay: delay,
+            );
+          } else {
+            debugPrint(
+              '[Gifticon][Worker] auto share time already passed, skip scheduling: at=$autoShareAt',
+            );
+          }
         }
 
         debugPrint('[Gifticon][Worker] show saved notification');
@@ -110,6 +143,7 @@ void callbackDispatcher() {
 
         final storageService = GifticonStorageService();
         await storageService.init();
+        await notificationService.init();
 
         final stored = storageService.getGifticonById(gifticonId);
         if (stored == null) {
@@ -150,13 +184,15 @@ void callbackDispatcher() {
           deviceIdService: deviceIdService,
         );
 
-        debugPrint(
-          '[Gifticon][Worker] auto share upload start: id=$gifticonId',
-        );
+        debugPrint('[Gifticon][Worker] auto share upload start: id=$gifticonId');
         await sharingService.uploadForSharing(stored);
-        debugPrint(
-          '[Gifticon][Worker] auto share upload done: id=$gifticonId',
-        );
+        debugPrint('[Gifticon][Worker] auto share upload done: id=$gifticonId');
+
+        final updated = storageService.getGifticonById(gifticonId);
+        if (updated != null && updated.isShared) {
+          debugPrint('[Gifticon][Worker] show shared notification: id=$gifticonId');
+          await notificationService.showSharedNotificationFromStored(updated);
+        }
 
         return true;
       }
@@ -173,9 +209,7 @@ void callbackDispatcher() {
           '[Gifticon][Worker] processing notification cancelled (on error)',
         );
       } catch (cancelError, cancelSt) {
-        debugPrint(
-          '[Gifticon][Worker][CancelNotificationError] $cancelError',
-        );
+        debugPrint('[Gifticon][Worker][CancelNotificationError] $cancelError');
         debugPrintStack(stackTrace: cancelSt);
       }
 

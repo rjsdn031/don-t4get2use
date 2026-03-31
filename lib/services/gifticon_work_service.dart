@@ -49,9 +49,7 @@ class GifticonWorkService {
   Future<void> cancelAutoShareWork(String gifticonId) async {
     final uniqueName = 'gifticon-auto-share-$gifticonId';
 
-    debugPrint(
-      '[Gifticon][Work] cancelAutoShareWork id=$gifticonId',
-    );
+    debugPrint('[Gifticon][Work] cancelAutoShareWork id=$gifticonId');
 
     await Workmanager().cancelByUniqueName(uniqueName);
   }

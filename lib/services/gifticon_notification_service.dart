@@ -5,23 +5,19 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../models/stored_gifticon.dart';
 import 'exact_alarm_permission_service.dart';
-import 'gifticon_sharing_service.dart';
 import 'now_provider.dart';
 
 class GifticonNotificationService {
   GifticonNotificationService(
       this._notifications, {
         ExactAlarmPermissionService? exactAlarmPermissionService,
-        GifticonSharingService? sharingService,
         NowProvider? nowProvider,
       })  : _exactAlarmPermissionService =
       exactAlarmPermissionService ?? ExactAlarmPermissionService(),
-        _sharingService = sharingService,
         _nowProvider = nowProvider ?? SystemNowProvider();
 
   final FlutterLocalNotificationsPlugin _notifications;
   final ExactAlarmPermissionService _exactAlarmPermissionService;
-  final GifticonSharingService? _sharingService;
   final NowProvider _nowProvider;
 
   static const String _pipelineChannelId = 'gifticon_pipeline';
@@ -38,6 +34,7 @@ class GifticonNotificationService {
 
   static const int _processingNotificationId = 7001;
   static const int _savedNotificationId = 7002;
+  static const int _sharedNotificationId = 7003;
   static const int _debugNowNotificationId = 999000;
   static const int _debugScheduledNotificationId = 999001;
 
@@ -146,6 +143,34 @@ class GifticonNotificationService {
     );
   }
 
+  Future<void> showSharedNotificationFromStored(StoredGifticon stored) async {
+    final body = _buildSharedBody(
+      merchantName: stored.merchantName,
+      itemName: stored.itemName,
+    );
+
+    const androidDetails = AndroidNotificationDetails(
+      _expiryChannelId,
+      _expiryChannelName,
+      channelDescription: _expiryChannelDescription,
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      category: AndroidNotificationCategory.status,
+    );
+
+    const details = NotificationDetails(android: androidDetails);
+
+    await _notifications.show(
+      id: _sharedNotificationId,
+      title: '기프티콘 공유 완료',
+      body: body,
+      notificationDetails: details,
+      payload: stored.id,
+    );
+  }
+
   Future<void> cancelProcessingNotification() async {
     await _notifications.cancel(id: _processingNotificationId);
   }
@@ -166,35 +191,27 @@ class GifticonNotificationService {
 
     await _scheduleExpiryNotification(
       id: _threeDaysBeforeNotificationId(stored.id),
-      scheduledAt: _at9am(expiresAt.subtract(const Duration(days: 3))),
+      scheduledAt: _at8am(expiresAt.subtract(const Duration(days: 3))),
       title: '기프티콘 만료 3일 전',
       body: _buildExpiryBody(
         merchantName: stored.merchantName,
         itemName: stored.itemName,
-        suffix: '3일 뒤 만료돼요. 사용을 잊지 마세요.',
+        suffix: '3일 남았어요. 사용을 잊지 마세요.',
       ),
       payload: stored.id,
     );
 
-    final oneDayBefore = _at9am(expiresAt.subtract(const Duration(days: 1)));
-
     await _scheduleExpiryNotification(
       id: _oneDayBeforeNotificationId(stored.id),
-      scheduledAt: oneDayBefore,
+      scheduledAt: _at8am(expiresAt.subtract(const Duration(days: 1))),
       title: '기프티콘 만료 하루 전',
       body: _buildExpiryBody(
         merchantName: stored.merchantName,
         itemName: stored.itemName,
-        suffix: '내일 만료돼요. 오늘 사용하는 걸 추천해요.',
+        suffix: '내일 아침 공유될 예정이에요. 오늘 꼭 사용해 보세요.',
       ),
       payload: stored.id,
     );
-
-    if (oneDayBefore.isAfter(_nowProvider.now())) {
-      _sharingService?.uploadForSharing(stored).catchError((e) {
-        debugPrint('[Gifticon][Notification] uploadForSharing error: $e');
-      });
-    }
 
     return true;
   }
@@ -390,6 +407,25 @@ class GifticonNotificationService {
     return '$resolvedItem(이)가 보관함에 저장되었습니다.';
   }
 
+  String _buildSharedBody({
+    required String? merchantName,
+    required String? itemName,
+  }) {
+    final merchant = merchantName?.trim();
+    final item = itemName?.trim();
+
+    final parts = <String>[
+      if (merchant != null && merchant.isNotEmpty) merchant,
+      if (item != null && item.isNotEmpty) item,
+    ];
+
+    if (parts.isEmpty) {
+      return '기프티콘이 공유되었어요.';
+    }
+
+    return '${parts.join(' ')}이 공유되었어요.';
+  }
+
   String _buildExpiryBody({
     required String? merchantName,
     required String? itemName,
@@ -410,8 +446,8 @@ class GifticonNotificationService {
     return '${parts.join(' ')}이 $suffix';
   }
 
-  DateTime _at9am(DateTime date) {
-    return DateTime(date.year, date.month, date.day, 9, 0, 0);
+  DateTime _at8am(DateTime date) {
+    return DateTime(date.year, date.month, date.day, 8, 0, 0);
   }
 
   int _threeDaysBeforeNotificationId(String gifticonId) {
