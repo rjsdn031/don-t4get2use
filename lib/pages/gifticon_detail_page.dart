@@ -154,87 +154,95 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('기프티콘 보기')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (statusBadges.isNotEmpty) ...[
-              Wrap(spacing: 8, children: statusBadges),
-              const SizedBox(height: 12),
-            ],
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: ColorFiltered(
-                colorFilter: isInactive
-                    ? const ColorFilter.matrix([
-                  0.2126, 0.7152, 0.0722, 0, 0,
-                  0.2126, 0.7152, 0.0722, 0, 0,
-                  0.2126, 0.7152, 0.0722, 0, 0,
-                  0,      0,      0,      1, 0,
-                ])
-                    : const ColorFilter.mode(
-                  Colors.transparent,
-                  BlendMode.color,
-                ),
-                child: Opacity(
-                  opacity: isInactive ? 0.5 : 1.0,
-                  child: Image.file(
-                    File(_item.imagePath),
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => Container(
-                      height: 240,
-                      color: const Color(0xFFF2F2F2),
-                      child: const Center(child: Text('이미지를 불러올 수 없습니다.')),
+      body: SafeArea(
+        bottom: true,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            16 + MediaQuery.of(context).viewPadding.bottom,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (statusBadges.isNotEmpty) ...[
+                Wrap(spacing: 8, children: statusBadges),
+                const SizedBox(height: 12),
+              ],
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: ColorFiltered(
+                  colorFilter: isInactive
+                      ? const ColorFilter.matrix([
+                    0.2126, 0.7152, 0.0722, 0, 0,
+                    0.2126, 0.7152, 0.0722, 0, 0,
+                    0.2126, 0.7152, 0.0722, 0, 0,
+                    0,      0,      0,      1, 0,
+                  ])
+                      : const ColorFilter.mode(
+                    Colors.transparent,
+                    BlendMode.color,
+                  ),
+                  child: Opacity(
+                    opacity: isInactive ? 0.5 : 1.0,
+                    child: Image.file(
+                      File(_item.imagePath),
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Container(
+                        height: 240,
+                        color: const Color(0xFFF2F2F2),
+                        child: const Center(child: Text('이미지를 불러올 수 없습니다.')),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    _buildInfoTile('교환처', _item.merchantName ?? '-'),
-                    _buildInfoTile('상품명', _item.itemName ?? '-'),
-                    _buildInfoTile('유효기간', _formatDate(_item.expiresAt)),
-                    _buildInfoTile('쿠폰번호', _item.couponNumber ?? '-'),
-                    if (_item.isUsed) ...[
-                      _buildInfoTile('사용일', _formatDate(_item.usedAt)),
-                      if ((_item.usedByNickname ?? '').isNotEmpty)
-                        _buildInfoTile('사용한 분', '${_item.usedByNickname}님'),
-                    ],
-                    if (_item.isShared)
-                      _buildInfoTile('공유일', _formatDate(_item.sharedAt)),
-                    if (_item.isReceived)
-                      _buildInfoTile('공유한 분', _displayOwner()),
-                  ],
-                ),
-              ),
-            ),
-            if (!_item.isInactive) ...[
               const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: _isMarkingUsed ? null : _markAsUsed,
-                icon: _isMarkingUsed
-                    ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      _buildInfoTile('교환처', _item.merchantName ?? '-'),
+                      _buildInfoTile('상품명', _item.itemName ?? '-'),
+                      _buildInfoTile('유효기간', _formatDate(_item.expiresAt)),
+                      _buildInfoTile('쿠폰번호', _item.couponNumber ?? '-'),
+                      if (_item.isUsed) ...[
+                        _buildInfoTile('사용일', _formatDate(_item.usedAt)),
+                        if ((_item.usedByNickname ?? '').isNotEmpty)
+                          _buildInfoTile('사용한 분', '${_item.usedByNickname}님'),
+                      ],
+                      if (_item.isShared)
+                        _buildInfoTile('공유일', _formatDate(_item.sharedAt)),
+                      if (_item.isReceived)
+                        _buildInfoTile('공유한 분', _displayOwner()),
+                    ],
                   ),
-                )
-                    : const Icon(Icons.check_circle_outline),
-                label: Text(_isMarkingUsed ? '처리 중...' : '사용했어요'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.green.shade600,
                 ),
               ),
+              if (!_item.isInactive) ...[
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: _isMarkingUsed ? null : _markAsUsed,
+                  icon: _isMarkingUsed
+                      ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                      : const Icon(Icons.check_circle_outline),
+                  label: Text(_isMarkingUsed ? '처리 중...' : '사용했어요'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.green.shade600,
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

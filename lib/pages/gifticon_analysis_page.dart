@@ -229,71 +229,75 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
       appBar: AppBar(
         title: const Text('기프티콘 분석'),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ElevatedButton(
-              onPressed: _loading ? null : runAnalysis,
-              child: Text(_loading ? '처리 중...' : '이미지 선택 후 분석'),
-            ),
-            const SizedBox(height: 20),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (_selectedImage != null) ...[
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.file(
-                          _selectedImage!,
-                          fit: BoxFit.contain,
+      body: SafeArea(
+        bottom: true,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ElevatedButton(
+                onPressed: _loading ? null : runAnalysis,
+                child: Text(_loading ? '처리 중...' : '이미지 선택 후 분석'),
+              ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewPadding.bottom + 16,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_selectedImage != null) ...[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.file(
+                            _selectedImage!,
+                            fit: BoxFit.contain,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (_isGifticon == true && _parsedInfo != null) ...[
-                              _buildInfoTile(
-                                  '교환처', _parsedInfo?.merchantName ?? '-'),
-                              _buildInfoTile(
-                                  '상품 이름', _parsedInfo?.itemName ?? '-'),
-                              _buildInfoTile(
-                                '유효기간',
-                                _formatDate(_parsedInfo?.expiresAt),
-                              ),
-                              _buildInfoTile(
-                                '쿠폰 번호',
-                                _parsedInfo?.couponNumber ?? '-',
-                              ),
-                            ] else ...[
-                              _buildInfoTile('판별 결과', _statusText),
+                        const SizedBox(height: 20),
+                      ],
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (_isGifticon == true && _parsedInfo != null) ...[
+                                _buildInfoTile('교환처', _parsedInfo?.merchantName ?? '-'),
+                                _buildInfoTile('상품 이름', _parsedInfo?.itemName ?? '-'),
+                                _buildInfoTile(
+                                  '유효기간',
+                                  _formatDate(_parsedInfo?.expiresAt),
+                                ),
+                                _buildInfoTile(
+                                  '쿠폰 번호',
+                                  _parsedInfo?.couponNumber ?? '-',
+                                ),
+                              ] else ...[
+                                _buildInfoTile('판별 결과', _statusText),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                    if (canSave) ...[
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: (_saving || _saved) ? null : saveGifticon,
-                        child: Text(
-                          _saved ? '저장됨' : (_saving ? '저장 중...' : '저장하기'),
+                      if (canSave) ...[
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: (_saving || _saved) ? null : saveGifticon,
+                          child: Text(
+                            _saved ? '저장됨' : (_saving ? '저장 중...' : '저장하기'),
+                          ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
