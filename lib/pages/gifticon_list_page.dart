@@ -28,6 +28,118 @@ class GifticonListPage extends StatefulWidget {
   State<GifticonListPage> createState() => _GifticonListPageState();
 }
 
+class _GifticonThumbnail extends StatefulWidget {
+  const _GifticonThumbnail({
+    required this.path,
+    required this.muted,
+    required this.onRetryTriggered,
+  });
+
+  final String path;
+  final bool muted;
+  final VoidCallback onRetryTriggered;
+
+  @override
+  State<_GifticonThumbnail> createState() => _GifticonThumbnailState();
+}
+
+class _GifticonThumbnailState extends State<_GifticonThumbnail> {
+  int _retry = 0;
+  bool _retryScheduled = false;
+
+  void _scheduleRetry() {
+    if (_retryScheduled || _retry >= 1) {
+      debugPrint(
+        '[Gifticon][Thumb][RetrySkip] '
+            'path=${widget.path} retry=$_retry retryScheduled=$_retryScheduled',
+      );
+      return;
+    }
+
+    _retryScheduled = true;
+    debugPrint('[Gifticon][Thumb][RetryScheduled] path=${widget.path}');
+
+    Future<void>.delayed(const Duration(milliseconds: 500), () async {
+      if (!mounted) {
+        debugPrint('[Gifticon][Thumb][RetryAbort] unmounted path=${widget.path}');
+        return;
+      }
+
+      final provider = ResizeImage(
+        FileImage(File(widget.path)),
+        width: 160,
+      );
+
+      debugPrint('[Gifticon][Thumb][RetryStart] path=${widget.path}');
+      await provider.evict();
+      debugPrint('[Gifticon][Thumb][RetryEvicted] path=${widget.path}');
+
+      if (!mounted) return;
+
+      setState(() {
+        _retry += 1;
+        _retryScheduled = false;
+      });
+
+      debugPrint(
+        '[Gifticon][Thumb][RetrySetState] path=${widget.path} retry=$_retry',
+      );
+
+      widget.onRetryTriggered();
+      debugPrint('[Gifticon][Thumb][RetryParentTriggered] path=${widget.path}');
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    debugPrint(
+      '[Gifticon][Thumb][Build] '
+          'path=${widget.path} retry=$_retry muted=${widget.muted}',
+    );
+
+    return ColorFiltered(
+      colorFilter: widget.muted
+          ? const ColorFilter.matrix([
+        0.2126, 0.7152, 0.0722, 0, 0,
+        0.2126, 0.7152, 0.0722, 0, 0,
+        0.2126, 0.7152, 0.0722, 0, 0,
+        0,      0,      0,      1, 0,
+      ])
+          : const ColorFilter.mode(
+        Colors.transparent,
+        BlendMode.color,
+      ),
+      child: Image(
+        key: ValueKey('${widget.path}_$_retry'),
+        image: ResizeImage(
+          FileImage(File(widget.path)),
+          width: 160,
+        ),
+        fit: BoxFit.cover,
+        filterQuality: FilterQuality.low,
+        errorBuilder: (_, error, __) {
+          final file = File(widget.path);
+          file.exists().then((exists) async {
+            final length = exists ? await file.length() : -1;
+            debugPrint(
+              '[Gifticon][Thumb][Error] '
+                  'path=${widget.path} retry=$_retry '
+                  'exists=$exists length=$length error=$error',
+            );
+          });
+
+          _scheduleRetry();
+
+          return const ColoredBox(
+            color: Color(0xFFF2F2F2),
+            child: Icon(Icons.broken_image),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _GifticonListPageState extends State<GifticonListPage>
     with WidgetsBindingObserver {
   late final GifticonServices _services;
@@ -68,15 +180,42 @@ class _GifticonListPageState extends State<GifticonListPage>
     super.dispose();
   }
 
+  Future<void> _handleResumedRefresh() async {
+    if (!_isInitialized) return;
+
+    debugPrint('[Gifticon][ListPage][Lifecycle] resumed -> reopen & reload start');
+
+    await _itemsSubscription?.cancel();
+    debugPrint('[Gifticon][ListPage][Lifecycle] items subscription cancelled');
+
+    await _storageService.reopenBox();
+    debugPrint('[Gifticon][ListPage][Lifecycle] storage box reopened');
+
+    _listenToItems();
+    debugPrint('[Gifticon][ListPage][Lifecycle] items subscription restarted');
+
+    await _loadItems();
+
+    debugPrint('[Gifticon][ListPage][Lifecycle] resumed -> reopen & reload done');
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    debugPrint(
+      '[Gifticon][ListPage][Lifecycle] '
+          'from=$_appLifecycleState to=$state initialized=$_isInitialized',
+    );
+
     _appLifecycleState = state;
 
     if (state == AppLifecycleState.resumed && _isInitialized) {
-      _loadItems();
+      _handleResumedRefresh();
+      debugPrint('[Gifticon][ListPage][Lifecycle] resumed -> refresh permission');
+
       _refreshExactAlarmPermissionStatus();
 
       if (_isListeningEnabled && !_isListeningActive) {
+        debugPrint('[Gifticon][ListPage][Lifecycle] resumed -> restart listener');
         _startListeningScreenshotEvents();
       }
     }
@@ -91,6 +230,26 @@ class _GifticonListPageState extends State<GifticonListPage>
     await Permission.notification.request();
   }
 
+  void _listenToItems() {
+    _itemsSubscription?.cancel();
+    _itemsSubscription = _storageService.watchGifticons().listen((items) {
+      debugPrint(
+        '[Gifticon][ListPage][ItemsStream] received items=${items.length}',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _items = items;
+        _loading = false;
+      });
+
+      debugPrint(
+        '[Gifticon][ListPage][ItemsStream] setState complete items=${_items.length}',
+      );
+    });
+  }
+
   Future<void> _initialize() async {
     try {
       await _ensureNotificationPermission();
@@ -98,13 +257,7 @@ class _GifticonListPageState extends State<GifticonListPage>
       _services =
           widget.servicesOverride ?? await GifticonServices.create(nowProvider: _nowProvider);
       _storageService = _services.storageService;
-      _itemsSubscription = _storageService.watchGifticons().listen((items) {
-        if (!mounted) return;
-        setState(() {
-          _items = items;
-          _loading = false;
-        });
-      });
+      _listenToItems();
       _automationService = _services.automationService;
       _screenshotEventListener = ScreenshotEventListenerModule();
       _notificationService = _services.notificationService;
@@ -214,7 +367,11 @@ class _GifticonListPageState extends State<GifticonListPage>
 
     _screenshotSubscription = _screenshotEventListener.events.listen(
           (event) async {
-        debugPrint('[Gifticon][List] screenshot event received: $event');
+            debugPrint(
+              '[Gifticon][ListPage][ScreenshotEvent] '
+                  'event=$event enabled=$_isListeningEnabled processing=$_isProcessingScreenshot '
+                  'lifecycle=$_appLifecycleState',
+            );
 
         if (!_isListeningEnabled || _isProcessingScreenshot) return;
 
@@ -226,8 +383,16 @@ class _GifticonListPageState extends State<GifticonListPage>
                   _appLifecycleState == AppLifecycleState.detached ||
                   _appLifecycleState == AppLifecycleState.hidden;
 
+          debugPrint(
+            '[Gifticon][ListPage][ScreenshotEvent] handle start isBackground=$isBackground',
+          );
+
           final output = await _automationService.handleScreenshotDetected(
             isBackground: isBackground,
+          );
+
+          debugPrint(
+            '[Gifticon][ListPage][ScreenshotEvent] handle done output=$output',
           );
 
           debugPrint('[Gifticon][List] automation output=$output');
@@ -302,12 +467,18 @@ class _GifticonListPageState extends State<GifticonListPage>
 
   Future<void> _loadItems() async {
     final items = _storageService.getAllGifticons();
+    debugPrint('[Gifticon][ListPage][LoadItems] fetched items=${items.length}');
 
     if (!mounted) return;
+
     setState(() {
       _items = items;
       _loading = false;
     });
+
+    debugPrint(
+      '[Gifticon][ListPage][LoadItems] setState complete items=${_items.length}',
+    );
   }
 
   Future<void> _loadMyNickname() async {
@@ -490,6 +661,11 @@ class _GifticonListPageState extends State<GifticonListPage>
 
   @override
   Widget build(BuildContext context) {
+    debugPrint(
+      '[Gifticon][ListPage][Build] '
+          'items=${_items.length} loading=$_loading initialized=$_isInitialized',
+    );
+
     final now = _nowProvider.now();
     final activeItems = _items.where((e) => !e.isInactiveAt(now)).toList();
     final inactiveItems = _items.where((e) => e.isInactiveAt(now)).toList();
@@ -595,6 +771,12 @@ class _GifticonListPageState extends State<GifticonListPage>
   }
 
   Widget _buildGifticonCard(StoredGifticon item, {required bool muted}) {
+    debugPrint(
+      '[Gifticon][Card][Build] '
+          'id=${item.id} path=${item.imagePath} muted=$muted '
+          'itemName=${item.itemName} expiresAt=${item.expiresAt}',
+    );
+
     final now = _nowProvider.now();
 
     final statusLabel = item.isUsed
@@ -616,32 +798,6 @@ class _GifticonListPageState extends State<GifticonListPage>
         child: Card(
           child: ListTile(
             contentPadding: const EdgeInsets.all(12),
-            leading: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: SizedBox(
-                width: 56,
-                height: 56,
-                child: ColorFiltered(
-                  colorFilter: muted
-                      ? const ColorFilter.matrix([
-                    0.2126, 0.7152, 0.0722, 0, 0,
-                    0.2126, 0.7152, 0.0722, 0, 0,
-                    0.2126, 0.7152, 0.0722, 0, 0,
-                    0,      0,      0,      1, 0,
-                  ])
-                      : const ColorFilter.mode(
-                      Colors.transparent, BlendMode.color),
-                  child: Image.file(
-                    File(item.imagePath),
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const ColoredBox(
-                      color: Color(0xFFF2F2F2),
-                      child: Icon(Icons.broken_image),
-                    ),
-                  ),
-                ),
-              ),
-            ),
             title: Row(
               children: [
                 Expanded(child: Text(item.itemName ?? '상품명 없음')),
@@ -705,6 +861,24 @@ class _GifticonListPageState extends State<GifticonListPage>
               onPressed: () => _confirmDelete(item),
             ),
             onTap: () => _openDetailPage(item),
+            leading: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 56,
+                height: 56,
+                child: _GifticonThumbnail(
+                  path: item.imagePath,
+                  muted: muted,
+                  onRetryTriggered: () {
+                    debugPrint(
+                      '[Gifticon][ListPage][RetryParentSetState] path=${item.imagePath}',
+                    );
+                    if (!mounted) return;
+                    setState(() {});
+                  },
+                ),
+              ),
+            ),
           ),
         ),
       ),

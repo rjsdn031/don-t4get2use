@@ -1,14 +1,20 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/gifticon_models.dart';
 import '../models/stored_gifticon.dart';
 import 'now_provider.dart';
+
+// WorkManager isolate → 메인 isolate 갱신 신호용 키
+const String kPendingRefreshKey = 'gifticon_pending_refresh';
 
 class SaveGifticonResult {
   final StoredGifticon gifticon;
@@ -33,10 +39,26 @@ class GifticonStorageService {
 
   Stream<List<StoredGifticon>> watchGifticons() => _itemsController.stream;
 
+  /// 외부에서 스트림 갱신을 트리거할 때 사용 (알림 콜백 등)
+  void emitItems() => _emitItems();
+
   void _emitItems() {
     if (_itemsController.isClosed) return;
     _itemsController.add(getAllGifticons());
   }
+
+  void _emitItemsWithFollowUps() {
+    _emitItems();
+
+    Future<void>.delayed(const Duration(milliseconds: 300), () {
+      _emitItems();
+    });
+
+    Future<void>.delayed(const Duration(seconds: 1), () {
+      _emitItems();
+    });
+  }
+
 
   void dispose() {
     _itemsController.close();
@@ -46,6 +68,18 @@ class GifticonStorageService {
     if (!Hive.isBoxOpen(_boxName)) {
       await Hive.openBox(_boxName);
     }
+    _emitItems();
+  }
+
+  Future<void> reopenBox() async {
+    if (Hive.isBoxOpen(_boxName)) {
+      await Hive.box(_boxName).close();
+      debugPrint('[Gifticon][Storage] box closed: $_boxName');
+    }
+
+    await Hive.openBox(_boxName);
+    debugPrint('[Gifticon][Storage] box reopened: $_boxName');
+
     _emitItems();
   }
 
@@ -63,7 +97,7 @@ class GifticonStorageService {
             'itemName=${existing.itemName}, '
             'expiresAt=${existing.expiresAt}',
       );
-      _emitItems();
+      _emitItemsWithFollowUps();
       return SaveGifticonResult(gifticon: existing, isDuplicate: true);
     }
 
@@ -85,7 +119,7 @@ class GifticonStorageService {
 
     final box = Hive.box(_boxName);
     await box.put(id, stored.toJson());
-    _emitItems();
+    _emitItemsWithFollowUps();
 
     debugPrint(
       '[Gifticon][Storage] saved new gifticon id=$id, '
@@ -127,7 +161,7 @@ class GifticonStorageService {
       usedByNickname: myNickname ?? existing.usedByNickname,
     );
     await box.put(id, updated.toJson());
-    _emitItems();
+    _emitItemsWithFollowUps();
 
     debugPrint('[Gifticon][Storage] marked as used: id=$id nickname=$myNickname');
     return updated;
@@ -191,7 +225,7 @@ class GifticonStorageService {
     );
 
     await box.put(gifticonId, stored.toJson());
-    _emitItems();
+    _emitItemsWithFollowUps();
     debugPrint('[Gifticon][Storage] received gifticon saved: id=$gifticonId');
     return stored;
   }
@@ -234,6 +268,24 @@ class GifticonStorageService {
     debugPrint(
       '[Gifticon][Storage] markAsUsedIfExists: id=$id usedByNickname=$usedByNickname',
     );
+  }
+
+  /// WorkManager isolate에서 저장 완료 후 호출 — 메인 isolate에 갱신 신호 전달
+  static Future<void> markPendingRefresh() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(kPendingRefreshKey, true);
+    debugPrint('[Gifticon][Storage] pendingRefresh set');
+  }
+
+  /// 메인 isolate에서 polling 시 호출 — 플래그가 있으면 true 반환 후 초기화
+  static Future<bool> consumePendingRefresh() async {
+    final prefs = await SharedPreferences.getInstance();
+    final pending = prefs.getBool(kPendingRefreshKey) ?? false;
+    if (pending) {
+      await prefs.remove(kPendingRefreshKey);
+      debugPrint('[Gifticon][Storage] pendingRefresh consumed');
+    }
+    return pending;
   }
 
   Future<void> deleteGifticon(String id) async {
@@ -327,9 +379,45 @@ class GifticonStorageService {
     final sourceFile = File(sourceImagePath);
     final extension = _getExtension(sourceImagePath);
     final targetPath = '${gifticonDir.path}/gifticon_$id$extension';
+    final targetFile = File(targetPath);
 
-    final copied = await sourceFile.copy(targetPath);
-    return copied.path;
+    final bytes = await sourceFile.readAsBytes();
+    await targetFile.writeAsBytes(bytes, flush: true);
+
+    await _waitUntilDecodable(targetFile);
+
+    debugPrint(
+      '[Gifticon][Storage] image ready '
+          'source=$sourceImagePath target=$targetPath bytes=${bytes.length}',
+    );
+
+    return targetFile.path;
+  }
+
+  Future<void> _waitUntilDecodable(
+      File file, {
+        Duration timeout = const Duration(seconds: 3),
+        Duration interval = const Duration(milliseconds: 150),
+      }) async {
+    final sw = Stopwatch()..start();
+
+    while (sw.elapsed < timeout) {
+      try {
+        if (await file.exists()) {
+          final bytes = await file.readAsBytes();
+          if (bytes.isNotEmpty) {
+            await instantiateImageCodec(bytes);
+            return;
+          }
+        }
+      } catch (_) {
+        // 아직 디코딩 가능한 상태가 아니면 재시도
+      }
+
+      await Future<void>.delayed(interval);
+    }
+
+    debugPrint('[Gifticon][Storage] waitUntilDecodable timeout: ${file.path}');
   }
 
   String _getExtension(String path) {

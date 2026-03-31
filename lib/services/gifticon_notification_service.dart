@@ -12,13 +12,19 @@ class GifticonNotificationService {
       this._notifications, {
         ExactAlarmPermissionService? exactAlarmPermissionService,
         NowProvider? nowProvider,
+        void Function()? onGifticonSaved,
       })  : _exactAlarmPermissionService =
       exactAlarmPermissionService ?? ExactAlarmPermissionService(),
-        _nowProvider = nowProvider ?? SystemNowProvider();
+        _nowProvider = nowProvider ?? SystemNowProvider(),
+        _onGifticonSaved = onGifticonSaved;
 
   final FlutterLocalNotificationsPlugin _notifications;
   final ExactAlarmPermissionService _exactAlarmPermissionService;
   final NowProvider _nowProvider;
+
+  /// WorkManager가 기프티콘을 저장 완료했을 때 알림을 수신하면 호출됨
+  /// List page에서 _loadItems()를 연결해서 리스트 자동 갱신에 사용
+  final void Function()? _onGifticonSaved;
 
   static const String _pipelineChannelId = 'gifticon_pipeline';
   static const String _pipelineChannelName = '기프티콘 저장 알림';
@@ -48,9 +54,13 @@ class GifticonNotificationService {
     const androidInitSettings = AndroidInitializationSettings(
       '@mipmap/ic_launcher',
     );
-    const initSettings = InitializationSettings(android: androidInitSettings);
+    final initSettings = InitializationSettings(android: androidInitSettings);
 
-    await _notifications.initialize(settings: initSettings);
+    await _notifications.initialize(
+      settings: initSettings,
+      onDidReceiveNotificationResponse: _onNotificationResponse,
+      onDidReceiveBackgroundNotificationResponse: _onBackgroundNotificationResponse,
+    );
 
     const pipelineChannel = AndroidNotificationChannel(
       _pipelineChannelId,
@@ -457,4 +467,24 @@ class GifticonNotificationService {
   int _oneDayBeforeNotificationId(String gifticonId) {
     return (gifticonId.hashCode & 0x7fffffff) + _expiryOneDaySalt;
   }
+
+  void _onNotificationResponse(NotificationResponse response) {
+    debugPrint(
+      '[Gifticon][Notification] response: id=${response.id} payload=${response.payload}',
+    );
+    // 저장 완료 알림(_savedNotificationId) 수신 시 리스트 갱신 트리거
+    if (response.id == _savedNotificationId ||
+        response.id == _sharedNotificationId) {
+      _onGifticonSaved?.call();
+    }
+  }
+}
+
+/// 백그라운드에서 알림을 탭했을 때 호출되는 최상위 함수 (isolate 제약으로 콜백 직접 호출 불가)
+/// 앱이 포그라운드로 올 때 didChangeAppLifecycleState(resumed)에서 갱신되므로 여기선 로깅만 함
+@pragma('vm:entry-point')
+void _onBackgroundNotificationResponse(NotificationResponse response) {
+  debugPrint(
+    '[Gifticon][Notification][Background] response: id=${response.id} payload=${response.payload}',
+  );
 }

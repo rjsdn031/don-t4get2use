@@ -61,7 +61,9 @@ void callbackDispatcher() {
         await notificationService.showProcessingNotification();
 
         debugPrint('[Gifticon][Worker] start remote parse');
+        final sw = Stopwatch()..start();
         final info = await parser.parse(rawText: rawText);
+        debugPrint('[Gifticon][Worker] parse took ${sw.elapsedMilliseconds}ms');
 
         debugPrint('[Gifticon][Worker] save parsed gifticon');
         final result = await storageService.saveGifticon(
@@ -125,6 +127,9 @@ void callbackDispatcher() {
 
         debugPrint('[Gifticon][Worker] show saved notification');
         await notificationService.showSavedNotificationFromStored(stored);
+
+        // 메인 isolate에 갱신 신호 전달
+        await GifticonStorageService.markPendingRefresh();
 
         await notificationService.cancelProcessingNotification();
         debugPrint('[Gifticon][Worker] processing notification cancelled');

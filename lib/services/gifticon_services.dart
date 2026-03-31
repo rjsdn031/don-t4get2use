@@ -61,6 +61,7 @@ class GifticonServices {
     final notificationService = GifticonNotificationService(
       notificationsPlugin,
       nowProvider: resolvedNowProvider,
+      onGifticonSaved: storageService.emitItems,
     );
     await notificationService.init();
 

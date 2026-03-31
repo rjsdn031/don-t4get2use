@@ -88,8 +88,6 @@ class ScreenshotAutomationService {
     }
 
     final now = DateTime.now();
-    debugPrint('[Gifticon][Automation] now=$now');
-    debugPrint('[Gifticon][Automation] lastHandledAt=$_lastHandledAt');
 
     if (_lastHandledAt != null &&
         now.difference(_lastHandledAt!) < const Duration(milliseconds: 1200)) {
@@ -120,46 +118,29 @@ class ScreenshotAutomationService {
         return null;
       }
 
+      final sw = Stopwatch()..start();
       final output = await pipeline.runFromImage(latestImage);
+      debugPrint('[Gifticon][Automation] pipeline took ${sw.elapsedMilliseconds}ms');
       _lastProcessedPath = latestImage.path;
 
       if (!output.isGifticon) {
         return output;
       }
 
-      if (isBackground) {
-        debugPrint('[Gifticon][Automation] background -> enqueue parse work');
-        await workService.enqueueParseWork(
-          rawText: output.ocr.rawText,
-          imagePath: output.image.path,
-        );
-        return output;
-      }
-
-      debugPrint('[Gifticon][Automation] foreground -> parse/save directly');
-      await notificationService.showProcessingNotification();
-
-      final info = await aiParser.parse(rawText: output.ocr.rawText);
-      final result = await storageService.saveGifticon(
-        sourceImagePath: output.image.path,
-        info: info,
+      debugPrint('[Gifticon][Automation] enqueue parse work');
+      await workService.enqueueParseWork(
+        rawText: output.ocr.rawText,
+        imagePath: output.image.path,
       );
 
-      if (!result.isDuplicate) {
-        await notificationService.scheduleExpiryNotifications(result.gifticon);
-        await notificationService.showSavedNotificationFromStored(result.gifticon);
+      if (!isBackground) {
+        await notificationService.showProcessingNotification();
       }
 
-      await notificationService.cancelProcessingNotification();
       return output;
     } catch (e, st) {
       debugPrint('[Gifticon][Automation][Error] $e');
       debugPrintStack(stackTrace: st);
-
-      try {
-        await notificationService.cancelProcessingNotification();
-      } catch (_) {}
-
       rethrow;
     } finally {
       _isProcessing = false;
