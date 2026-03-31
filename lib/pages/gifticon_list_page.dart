@@ -51,7 +51,7 @@ class _GifticonThumbnailState extends State<_GifticonThumbnail> {
     if (_retryScheduled || _retry >= 1) {
       debugPrint(
         '[Gifticon][Thumb][RetrySkip] '
-            'path=${widget.path} retry=$_retry retryScheduled=$_retryScheduled',
+        'path=${widget.path} retry=$_retry retryScheduled=$_retryScheduled',
       );
       return;
     }
@@ -61,14 +61,13 @@ class _GifticonThumbnailState extends State<_GifticonThumbnail> {
 
     Future<void>.delayed(const Duration(milliseconds: 500), () async {
       if (!mounted) {
-        debugPrint('[Gifticon][Thumb][RetryAbort] unmounted path=${widget.path}');
+        debugPrint(
+          '[Gifticon][Thumb][RetryAbort] unmounted path=${widget.path}',
+        );
         return;
       }
 
-      final provider = ResizeImage(
-        FileImage(File(widget.path)),
-        width: 160,
-      );
+      final provider = ResizeImage(FileImage(File(widget.path)), width: 160);
 
       debugPrint('[Gifticon][Thumb][RetryStart] path=${widget.path}');
       await provider.evict();
@@ -94,27 +93,37 @@ class _GifticonThumbnailState extends State<_GifticonThumbnail> {
   Widget build(BuildContext context) {
     debugPrint(
       '[Gifticon][Thumb][Build] '
-          'path=${widget.path} retry=$_retry muted=${widget.muted}',
+      'path=${widget.path} retry=$_retry muted=${widget.muted}',
     );
 
     return ColorFiltered(
       colorFilter: widget.muted
           ? const ColorFilter.matrix([
-        0.2126, 0.7152, 0.0722, 0, 0,
-        0.2126, 0.7152, 0.0722, 0, 0,
-        0.2126, 0.7152, 0.0722, 0, 0,
-        0,      0,      0,      1, 0,
-      ])
-          : const ColorFilter.mode(
-        Colors.transparent,
-        BlendMode.color,
-      ),
+              0.2126,
+              0.7152,
+              0.0722,
+              0,
+              0,
+              0.2126,
+              0.7152,
+              0.0722,
+              0,
+              0,
+              0.2126,
+              0.7152,
+              0.0722,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+            ])
+          : const ColorFilter.mode(Colors.transparent, BlendMode.color),
       child: Image(
         key: ValueKey('${widget.path}_$_retry'),
-        image: ResizeImage(
-          FileImage(File(widget.path)),
-          width: 160,
-        ),
+        image: ResizeImage(FileImage(File(widget.path)), width: 160),
         fit: BoxFit.cover,
         filterQuality: FilterQuality.low,
         errorBuilder: (_, error, __) {
@@ -123,8 +132,8 @@ class _GifticonThumbnailState extends State<_GifticonThumbnail> {
             final length = exists ? await file.length() : -1;
             debugPrint(
               '[Gifticon][Thumb][Error] '
-                  'path=${widget.path} retry=$_retry '
-                  'exists=$exists length=$length error=$error',
+              'path=${widget.path} retry=$_retry '
+              'exists=$exists length=$length error=$error',
             );
           });
 
@@ -147,7 +156,8 @@ class _GifticonListPageState extends State<GifticonListPage>
   late final ScreenshotAutomationService _automationService;
   late final ScreenshotEventListenerModule _screenshotEventListener;
   late final GifticonNotificationService _notificationService;
-  late final NowProvider _nowProvider = widget.nowProviderOverride ?? SystemNowProvider();
+  late final NowProvider _nowProvider =
+      widget.nowProviderOverride ?? SystemNowProvider();
 
   StreamSubscription<dynamic>? _screenshotSubscription;
   StreamSubscription<List<StoredGifticon>>? _itemsSubscription;
@@ -183,7 +193,9 @@ class _GifticonListPageState extends State<GifticonListPage>
   Future<void> _handleResumedRefresh() async {
     if (!_isInitialized) return;
 
-    debugPrint('[Gifticon][ListPage][Lifecycle] resumed -> reopen & reload start');
+    debugPrint(
+      '[Gifticon][ListPage][Lifecycle] resumed -> reopen & reload start',
+    );
 
     await _itemsSubscription?.cancel();
     debugPrint('[Gifticon][ListPage][Lifecycle] items subscription cancelled');
@@ -196,26 +208,32 @@ class _GifticonListPageState extends State<GifticonListPage>
 
     await _loadItems();
 
-    debugPrint('[Gifticon][ListPage][Lifecycle] resumed -> reopen & reload done');
+    debugPrint(
+      '[Gifticon][ListPage][Lifecycle] resumed -> reopen & reload done',
+    );
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     debugPrint(
       '[Gifticon][ListPage][Lifecycle] '
-          'from=$_appLifecycleState to=$state initialized=$_isInitialized',
+      'from=$_appLifecycleState to=$state initialized=$_isInitialized',
     );
 
     _appLifecycleState = state;
 
     if (state == AppLifecycleState.resumed && _isInitialized) {
       _handleResumedRefresh();
-      debugPrint('[Gifticon][ListPage][Lifecycle] resumed -> refresh permission');
+      debugPrint(
+        '[Gifticon][ListPage][Lifecycle] resumed -> refresh permission',
+      );
 
       _refreshExactAlarmPermissionStatus();
 
       if (_isListeningEnabled && !_isListeningActive) {
-        debugPrint('[Gifticon][ListPage][Lifecycle] resumed -> restart listener');
+        debugPrint(
+          '[Gifticon][ListPage][Lifecycle] resumed -> restart listener',
+        );
         _startListeningScreenshotEvents();
       }
     }
@@ -255,7 +273,8 @@ class _GifticonListPageState extends State<GifticonListPage>
       await _ensureNotificationPermission();
 
       _services =
-          widget.servicesOverride ?? await GifticonServices.create(nowProvider: _nowProvider);
+          widget.servicesOverride ??
+          await GifticonServices.create(nowProvider: _nowProvider);
       _storageService = _services.storageService;
       _listenToItems();
       _automationService = _services.automationService;
@@ -279,9 +298,9 @@ class _GifticonListPageState extends State<GifticonListPage>
         _loading = false;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('초기화 중 오류가 발생했습니다: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('초기화 중 오류가 발생했습니다: $e')));
     }
   }
 
@@ -293,8 +312,8 @@ class _GifticonListPageState extends State<GifticonListPage>
     });
 
     try {
-      final canSchedule =
-      await _services.notificationService.canScheduleExactAlarms();
+      final canSchedule = await _services.notificationService
+          .canScheduleExactAlarms();
 
       if (!mounted) return;
       setState(() {
@@ -302,9 +321,9 @@ class _GifticonListPageState extends State<GifticonListPage>
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('정확 알람 권한 상태를 확인하지 못했습니다: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('정확 알람 권한 상태를 확인하지 못했습니다: $e')));
     } finally {
       if (!mounted) return;
       setState(() {
@@ -319,15 +338,13 @@ class _GifticonListPageState extends State<GifticonListPage>
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('정확 알람 설정 화면을 열었습니다. 허용 후 앱으로 돌아와 주세요.'),
-        ),
+        const SnackBar(content: Text('정확 알람 설정 화면을 열었습니다. 허용 후 앱으로 돌아와 주세요.')),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('정확 알람 설정 화면을 열지 못했습니다: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('정확 알람 설정 화면을 열지 못했습니다: $e')));
     }
   }
 
@@ -357,21 +374,21 @@ class _GifticonListPageState extends State<GifticonListPage>
     if (!granted) {
       debugPrint('[Gifticon][List] media permission denied');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이미지 접근 권한이 필요합니다.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('이미지 접근 권한이 필요합니다.')));
       return;
     }
 
     debugPrint('[Gifticon][List] start screenshot event subscription');
 
     _screenshotSubscription = _screenshotEventListener.events.listen(
-          (event) async {
-            debugPrint(
-              '[Gifticon][ListPage][ScreenshotEvent] '
-                  'event=$event enabled=$_isListeningEnabled processing=$_isProcessingScreenshot '
-                  'lifecycle=$_appLifecycleState',
-            );
+      (event) async {
+        debugPrint(
+          '[Gifticon][ListPage][ScreenshotEvent] '
+          'event=$event enabled=$_isListeningEnabled processing=$_isProcessingScreenshot '
+          'lifecycle=$_appLifecycleState',
+        );
 
         if (!_isListeningEnabled || _isProcessingScreenshot) return;
 
@@ -380,8 +397,8 @@ class _GifticonListPageState extends State<GifticonListPage>
         try {
           final isBackground =
               _appLifecycleState == AppLifecycleState.paused ||
-                  _appLifecycleState == AppLifecycleState.detached ||
-                  _appLifecycleState == AppLifecycleState.hidden;
+              _appLifecycleState == AppLifecycleState.detached ||
+              _appLifecycleState == AppLifecycleState.hidden;
 
           debugPrint(
             '[Gifticon][ListPage][ScreenshotEvent] handle start isBackground=$isBackground',
@@ -404,17 +421,15 @@ class _GifticonListPageState extends State<GifticonListPage>
 
           if (!isBackground) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('기프티콘을 인식했습니다. 저장 중...'),
-              ),
+              const SnackBar(content: Text('기프티콘을 인식했습니다. 저장 중...')),
             );
           }
         } catch (e) {
           debugPrint('[Gifticon][List][Error] $e');
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('스크린샷 처리 중 오류가 발생했습니다: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('스크린샷 처리 중 오류가 발생했습니다: $e')));
         } finally {
           _isProcessingScreenshot = false;
         }
@@ -422,9 +437,9 @@ class _GifticonListPageState extends State<GifticonListPage>
       onError: (error) {
         debugPrint('[Gifticon][List][StreamError] $error');
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('스크린샷 이벤트 수신 오류: $error')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('스크린샷 이벤트 수신 오류: $error')));
       },
     );
 
@@ -494,9 +509,9 @@ class _GifticonListPageState extends State<GifticonListPage>
     await _storageService.deleteGifticon(item.id);
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('기프티콘을 삭제했습니다.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('기프티콘을 삭제했습니다.')));
   }
 
   Future<void> _openDetailPage(StoredGifticon item) async {
@@ -630,10 +645,7 @@ class _GifticonListPageState extends State<GifticonListPage>
           padding: EdgeInsets.all(16),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 22,
-                child: Icon(Icons.add),
-              ),
+              CircleAvatar(radius: 22, child: Icon(Icons.add)),
               SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -663,7 +675,7 @@ class _GifticonListPageState extends State<GifticonListPage>
   Widget build(BuildContext context) {
     debugPrint(
       '[Gifticon][ListPage][Build] '
-          'items=${_items.length} loading=$_loading initialized=$_isInitialized',
+      'items=${_items.length} loading=$_loading initialized=$_isInitialized',
     );
 
     final now = _nowProvider.now();
@@ -686,7 +698,9 @@ class _GifticonListPageState extends State<GifticonListPage>
           padding: const EdgeInsets.only(top: 12),
           children: [
             // ── 활성 섹션 ──
-            ...activeItems.map((item) => _buildGifticonCard(item, muted: false)),
+            ...activeItems.map(
+              (item) => _buildGifticonCard(item, muted: false),
+            ),
 
             // ── 비활성 섹션 헤더 ──
             if (inactiveItems.isNotEmpty) ...[
@@ -701,7 +715,7 @@ class _GifticonListPageState extends State<GifticonListPage>
                 ),
               ),
               ...inactiveItems.map(
-                    (item) => _buildGifticonCard(item, muted: true),
+                (item) => _buildGifticonCard(item, muted: true),
               ),
             ],
           ],
@@ -710,9 +724,7 @@ class _GifticonListPageState extends State<GifticonListPage>
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('꺼내먹어요'),
-      ),
+      appBar: AppBar(title: const Text('꺼내먹어요')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -720,9 +732,9 @@ class _GifticonListPageState extends State<GifticonListPage>
           children: [
             Text(
               '${_myNickname ?? '사용자'}님, 안녕하세요',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 6),
             Text(
@@ -746,15 +758,16 @@ class _GifticonListPageState extends State<GifticonListPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildExactAlarmPermissionButton(),
-              const SizedBox(height: 12),
+              if (_isCheckingExactAlarmPermission ||
+                  !_canScheduleExactAlarms) ...[
+                _buildExactAlarmPermissionButton(),
+                const SizedBox(height: 12),
+              ],
               Row(
                 children: [
                   Expanded(
                     child: Text(
-                      _isListeningActive
-                          ? '스크린샷 자동 감지 켜짐'
-                          : '스크린샷 자동 감지 꺼짐',
+                      _isListeningActive ? '스크린샷 자동 감지 켜짐' : '스크린샷 자동 감지 꺼짐',
                     ),
                   ),
                   Switch(
@@ -773,8 +786,8 @@ class _GifticonListPageState extends State<GifticonListPage>
   Widget _buildGifticonCard(StoredGifticon item, {required bool muted}) {
     debugPrint(
       '[Gifticon][Card][Build] '
-          'id=${item.id} path=${item.imagePath} muted=$muted '
-          'itemName=${item.itemName} expiresAt=${item.expiresAt}',
+      'id=${item.id} path=${item.imagePath} muted=$muted '
+      'itemName=${item.itemName} expiresAt=${item.expiresAt}',
     );
 
     final now = _nowProvider.now();
@@ -805,7 +818,9 @@ class _GifticonListPageState extends State<GifticonListPage>
                   const SizedBox(width: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 7, vertical: 2),
+                      horizontal: 7,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: (item.isReceived ? Colors.purple : Colors.blue)
                           .withOpacity(0.12),
@@ -827,7 +842,9 @@ class _GifticonListPageState extends State<GifticonListPage>
                   const SizedBox(width: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 7, vertical: 2),
+                      horizontal: 7,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: (item.isUsed ? Colors.grey : Colors.red)
                           .withOpacity(0.12),
