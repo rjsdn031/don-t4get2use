@@ -11,20 +11,30 @@ import '../modules/ocr_module.dart';
 import '../modules/remote_gifticon_ai_parser.dart';
 import '../services/gifticon_notification_service.dart';
 import '../services/gifticon_pipeline_service.dart';
+import '../services/gifticon_services.dart';
 import '../services/gifticon_storage_service.dart';
+import '../services/now_provider.dart';
 
 class GifticonAnalysisPage extends StatefulWidget {
-  const GifticonAnalysisPage({super.key});
+  const GifticonAnalysisPage({
+    super.key,
+    this.servicesOverride,
+    this.nowProviderOverride,
+  });
+
+  final GifticonServices? servicesOverride;
+  final NowProvider? nowProviderOverride;
 
   @override
   State<GifticonAnalysisPage> createState() => _GifticonAnalysisPageState();
 }
 
 class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
+  late final GifticonServices _services;
   late final GifticonPipelineService _pipeline;
   late final RemoteGifticonAiParser _aiParser;
   late final GifticonNotificationService _notificationService;
-  final GifticonStorageService _storageService = GifticonStorageService();
+  late final GifticonStorageService _storageService;
 
   bool _loading = false;
   bool _saving = false;
@@ -48,6 +58,12 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
   }
 
   Future<void> _initPage() async {
+    _services = widget.servicesOverride ??
+        await GifticonServices.create(
+          nowProvider: widget.nowProviderOverride ?? SystemNowProvider(),
+        );
+
+    _storageService = _services.storageService;
     await _storageService.init();
 
     _notificationService = GifticonNotificationService(

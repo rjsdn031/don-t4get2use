@@ -5,6 +5,7 @@ import '../modules/barcode_module.dart';
 import '../modules/gifticon_detector_module.dart';
 import '../modules/image_picker_module.dart';
 import '../modules/ocr_module.dart';
+import '../modules/remote_gifticon_ai_parser.dart';
 import 'device_id_service.dart';
 import 'fcm_service.dart';
 import 'gifticon_notification_service.dart';
@@ -82,10 +83,17 @@ class GifticonServices {
       detector: GifticonDetectorModule(),
     );
 
+    final aiParser = RemoteGifticonAiParser(
+      baseUrl: _baseUrl,
+    );
+
     final automationService = ScreenshotAutomationService(
       latestImageFinder: AndroidLatestImageFinderModule(),
       pipeline: pipelineService,
       workService: workService,
+      aiParser: aiParser,
+      storageService: storageService,
+      notificationService: notificationService,
     );
 
     final fcmService = FcmService(

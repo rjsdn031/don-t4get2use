@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -27,11 +28,25 @@ class GifticonStorageService {
   static const String _boxName = 'gifticons';
   final Uuid _uuid = const Uuid();
   final NowProvider _nowProvider;
+  final StreamController<List<StoredGifticon>> _itemsController =
+  StreamController<List<StoredGifticon>>.broadcast();
+
+  Stream<List<StoredGifticon>> watchGifticons() => _itemsController.stream;
+
+  void _emitItems() {
+    if (_itemsController.isClosed) return;
+    _itemsController.add(getAllGifticons());
+  }
+
+  void dispose() {
+    _itemsController.close();
+  }
 
   Future<void> init() async {
     if (!Hive.isBoxOpen(_boxName)) {
       await Hive.openBox(_boxName);
     }
+    _emitItems();
   }
 
   Future<SaveGifticonResult> saveGifticon({
@@ -48,6 +63,7 @@ class GifticonStorageService {
             'itemName=${existing.itemName}, '
             'expiresAt=${existing.expiresAt}',
       );
+      _emitItems();
       return SaveGifticonResult(gifticon: existing, isDuplicate: true);
     }
 
@@ -69,6 +85,7 @@ class GifticonStorageService {
 
     final box = Hive.box(_boxName);
     await box.put(id, stored.toJson());
+    _emitItems();
 
     debugPrint(
       '[Gifticon][Storage] saved new gifticon id=$id, '
@@ -110,6 +127,7 @@ class GifticonStorageService {
       usedByNickname: myNickname ?? existing.usedByNickname,
     );
     await box.put(id, updated.toJson());
+    _emitItems();
 
     debugPrint('[Gifticon][Storage] marked as used: id=$id nickname=$myNickname');
     return updated;
@@ -125,6 +143,7 @@ class GifticonStorageService {
 
     final updated = existing.copyWith(sharedAt: _nowProvider.now());
     await box.put(id, updated.toJson());
+    _emitItems();
     debugPrint('[Gifticon][Storage] marked as shared: id=$id');
   }
 
@@ -150,6 +169,7 @@ class GifticonStorageService {
 
       final updated = stored.copyWith(ownerNickname: ownerNickname);
       await box.put(gifticonId, updated.toJson());
+      _emitItems();
       return updated;
     }
 
@@ -171,6 +191,7 @@ class GifticonStorageService {
     );
 
     await box.put(gifticonId, stored.toJson());
+    _emitItems();
     debugPrint('[Gifticon][Storage] received gifticon saved: id=$gifticonId');
     return stored;
   }
@@ -184,6 +205,7 @@ class GifticonStorageService {
     }
 
     await box.put(item.id, item.toJson());
+    _emitItems();
     debugPrint('[Gifticon][Storage] updated gifticon: id=${item.id}');
     return item;
   }
@@ -208,6 +230,7 @@ class GifticonStorageService {
     );
 
     await box.put(id, updated.toJson());
+    _emitItems();
     debugPrint(
       '[Gifticon][Storage] markAsUsedIfExists: id=$id usedByNickname=$usedByNickname',
     );
@@ -227,6 +250,7 @@ class GifticonStorageService {
     }
 
     await box.delete(id);
+    _emitItems();
   }
 
   StoredGifticon? _findDuplicate(GifticonInfo info) {

@@ -35,14 +35,10 @@ class _GifticonListPageState extends State<GifticonListPage>
   late final ScreenshotAutomationService _automationService;
   late final ScreenshotEventListenerModule _screenshotEventListener;
   late final GifticonNotificationService _notificationService;
-  late final NowProvider _nowProvider;
+  late final NowProvider _nowProvider = widget.nowProviderOverride ?? SystemNowProvider();
 
   StreamSubscription<dynamic>? _screenshotSubscription;
-
-  Timer? _pollingTimer;
-  int _pollingCount = 0;
-  static const int _maxPollingCount = 6;
-  static const Duration _pollingInterval = Duration(seconds: 5);
+  StreamSubscription<List<StoredGifticon>>? _itemsSubscription;
 
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
 
@@ -68,7 +64,7 @@ class _GifticonListPageState extends State<GifticonListPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _screenshotSubscription?.cancel();
-    _stopPolling();
+    _itemsSubscription?.cancel();
     super.dispose();
   }
 
@@ -99,10 +95,16 @@ class _GifticonListPageState extends State<GifticonListPage>
     try {
       await _ensureNotificationPermission();
 
-      _nowProvider = widget.nowProviderOverride ?? SystemNowProvider();
       _services =
           widget.servicesOverride ?? await GifticonServices.create(nowProvider: _nowProvider);
       _storageService = _services.storageService;
+      _itemsSubscription = _storageService.watchGifticons().listen((items) {
+        if (!mounted) return;
+        setState(() {
+          _items = items;
+          _loading = false;
+        });
+      });
       _automationService = _services.automationService;
       _screenshotEventListener = ScreenshotEventListenerModule();
       _notificationService = _services.notificationService;
@@ -189,45 +191,6 @@ class _GifticonListPageState extends State<GifticonListPage>
     return storageStatus.isGranted;
   }
 
-  void _startPollingForNewGifticon() {
-    _stopPolling();
-    _pollingCount = 0;
-    final knownCount = _items.length;
-
-    debugPrint('[Gifticon][List] start polling (knownCount=$knownCount)');
-
-    _pollingTimer = Timer.periodic(_pollingInterval, (_) async {
-      if (!mounted) {
-        _stopPolling();
-        return;
-      }
-
-      _pollingCount++;
-      debugPrint('[Gifticon][List] polling $_pollingCount/$_maxPollingCount');
-
-      final latest = _storageService.getAllGifticons();
-
-      if (latest.length > knownCount) {
-        debugPrint('[Gifticon][List] new gifticon detected — refreshing');
-        _stopPolling();
-        setState(() => _items = latest);
-        return;
-      }
-
-      if (_pollingCount >= _maxPollingCount) {
-        debugPrint('[Gifticon][List] polling timeout — force refresh');
-        _stopPolling();
-        await _loadItems();
-      }
-    });
-  }
-
-  void _stopPolling() {
-    _pollingTimer?.cancel();
-    _pollingTimer = null;
-    _pollingCount = 0;
-  }
-
   Future<void> _startListeningScreenshotEvents() async {
     if (_isListeningActive) {
       debugPrint('[Gifticon][List] screenshot listener already active');
@@ -258,7 +221,10 @@ class _GifticonListPageState extends State<GifticonListPage>
         _isProcessingScreenshot = true;
 
         try {
-          final isBackground = _appLifecycleState != AppLifecycleState.resumed;
+          final isBackground =
+              _appLifecycleState == AppLifecycleState.paused ||
+                  _appLifecycleState == AppLifecycleState.detached ||
+                  _appLifecycleState == AppLifecycleState.hidden;
 
           final output = await _automationService.handleScreenshotDetected(
             isBackground: isBackground,
@@ -277,7 +243,6 @@ class _GifticonListPageState extends State<GifticonListPage>
                 content: Text('기프티콘을 인식했습니다. 저장 중...'),
               ),
             );
-            _startPollingForNewGifticon();
           }
         } catch (e) {
           debugPrint('[Gifticon][List][Error] $e');
@@ -356,7 +321,6 @@ class _GifticonListPageState extends State<GifticonListPage>
   Future<void> _deleteItem(StoredGifticon item) async {
     await _notificationService.cancelExpiryNotifications(item.id);
     await _storageService.deleteGifticon(item.id);
-    await _loadItems();
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -365,7 +329,7 @@ class _GifticonListPageState extends State<GifticonListPage>
   }
 
   Future<void> _openDetailPage(StoredGifticon item) async {
-    final result = await Navigator.push<bool>(
+    await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => GifticonDetailPage(
@@ -378,19 +342,20 @@ class _GifticonListPageState extends State<GifticonListPage>
     );
 
     if (!mounted) return;
-    if (result == true) await _loadItems();
   }
 
   Future<void> _openAnalysisPage() async {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const GifticonAnalysisPage(),
+        builder: (_) => GifticonAnalysisPage(
+          servicesOverride: _services,
+          nowProviderOverride: _nowProvider,
+        ),
       ),
     );
 
     if (!mounted) return;
-    await _loadItems();
     await _refreshExactAlarmPermissionStatus();
   }
 
