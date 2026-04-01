@@ -40,8 +40,12 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Don\'t Forget to Use!',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.orange),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF6155F5),
+        ),
         useMaterial3: true,
+        fontFamily: 'SUIT',
+        scaffoldBackgroundColor: Colors.white,
       ),
       home: const AppBootstrapPage(),
     );

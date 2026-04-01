@@ -11,6 +11,7 @@ import '../services/gifticon_services.dart';
 import '../services/gifticon_storage_service.dart';
 import '../services/now_provider.dart';
 import '../services/screenshot_automation_service.dart';
+import 'ScreenshotAutoDetectSettingsPage.dart';
 import 'gifticon_analysis_page.dart';
 import 'gifticon_detail_page.dart';
 
@@ -577,58 +578,114 @@ class _GifticonListPageState extends State<GifticonListPage>
     }
   }
 
-  Widget _buildExactAlarmPermissionButton() {
-    final isGranted = _canScheduleExactAlarms;
-    final icon = isGranted ? Icons.alarm_on : Icons.alarm_add;
-    final title = isGranted ? '정확 알람 권한 허용됨' : '정확 알람 권한 허용하기';
-    final subtitle = isGranted
-        ? '만료 3일 전 / 하루 전 오전 9시 알림을 예약할 수 있어요.'
-        : '기프티콘 만료 알림을 정확한 시간에 받으려면 권한이 필요해요.';
+  Future<void> _openScreenshotSettingsPage() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ScreenshotAutoDetectSettingsPage(
+          isEnabled: _isListeningEnabled,
+          onToggleChanged: (value) async {
+            await _toggleListening(value);
+          },
+        ),
+      ),
+    );
+  }
 
-    return Material(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: _isCheckingExactAlarmPermission ? null : _openExactAlarmSettings,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
+  // ── 색상 상수 ──────────────────────────────────────────
+  static const Color _accent = Color(0xFF6155F5);
+  static const Color _mutedText = Color(0xFF8E8E93);
+  static const Color _shareReceivedBg = Color(0xFFDBD8FF);
+  static const Color _shareReceivedBorder = Color(0xFF4034CD);
+  static const Color _sharedBg = Color(0xFFFDD3D0);
+  static const Color _sharedBorder = Color(0xFFEC221F);
+  static const Color _inactiveBg = Color(0xFFE3E3E3);
+  static const Color _inactiveBorder = Color(0xFF767676);
+
+  int _selectedTab = 0; // 0 = 사용 전, 1 = 사용 완료/만료
+
+  // ── 커스텀 헤더 ─────────────────────────────────────────
+  PreferredSizeWidget _buildCustomAppBar() {
+    const double topStripHeight = 55;
+    const double infoHeaderHeight = 108;
+    const double headerGap = 8;
+    const double totalHeight = topStripHeight + headerGap + infoHeaderHeight;
+
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(totalHeight),
+      child: Container(
+        color: Colors.white,
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              const _GifticonTopStrip(),
+              Container(
+                height: infoHeaderHeight,
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(28, 20, 20, 18),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFEBEBEB).withValues(alpha: 0.25),
+                      offset: const Offset(0, 4),
+                      blurRadius: 4,
+                    ),
+                  ],
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _myNickname ?? '사용자',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 25,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.black,
+                              height: 1.15,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            '보관 중인 기프티콘을 확인해보세요',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w400,
+                              color: Color(0xFF5A5A5A),
+                              height: 1.2,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: Theme.of(context).textTheme.bodySmall,
+                    const SizedBox(width: 12),
+                    IconButton(
+                      onPressed: _openScreenshotSettingsPage,
+                      icon: const Icon(
+                        Icons.more_horiz,
+                        color: Color(0xFFB3B3B3),
+                        size: 22,
+                      ),
+                      splashRadius: 18,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 24,
+                        minHeight: 24,
+                      ),
                     ),
                   ],
                 ),
               ),
-              if (_isCheckingExactAlarmPermission)
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else
-                Icon(
-                  isGranted ? Icons.check_circle : Icons.chevron_right,
-                  color: isGranted
-                      ? Theme.of(context).colorScheme.primary
-                      : null,
-                ),
             ],
           ),
         ),
@@ -636,36 +693,98 @@ class _GifticonListPageState extends State<GifticonListPage>
     );
   }
 
-  Widget _buildAddCard() {
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: _openAnalysisPage,
-        child: const Padding(
-          padding: EdgeInsets.all(16),
-          child: Row(
-            children: [
-              CircleAvatar(radius: 22, child: Icon(Icons.add)),
-              SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '기프티콘 추가',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text('기프티콘 직접 추가하기'),
-                  ],
+  // ── 탭바 ──────────────────────────────────────────────
+  Widget _buildTabBar(int activeCount, int inactiveCount) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Row(
+        children: [
+          Expanded(
+            child: _TabItem(
+              label: '사용 전',
+              count: activeCount,
+              selected: _selectedTab == 0,
+              onTap: () => setState(() => _selectedTab = 0),
+              accent: _accent,
+            ),
+          ),
+          Expanded(
+            child: _TabItem(
+              label: '사용 완료 / 만료',
+              count: inactiveCount,
+              selected: _selectedTab == 1,
+              onTap: () => setState(() => _selectedTab = 1),
+              accent: _accent,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── 알람 권한 버튼 ──────────────────────────────────────
+  Widget _buildExactAlarmPermissionButton() {
+    return GestureDetector(
+      onTap: _isCheckingExactAlarmPermission ? null : _openExactAlarmSettings,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2F2F7),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _accent.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.alarm_add, color: _accent, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '기프티콘 만료 알림을 받으려면 정확 알람 권한이 필요해요',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _accent,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-              Icon(Icons.chevron_right),
-            ],
-          ),
+            ),
+            if (_isCheckingExactAlarmPermission)
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              Icon(Icons.chevron_right, color: _accent, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── 빈 화면 ──────────────────────────────────────────
+  Widget _buildEmptyState() {
+    return Expanded(
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.card_giftcard_outlined, size: 56, color: _mutedText),
+            const SizedBox(height: 12),
+            Text(
+              '저장된 기프티콘이 없어요',
+              style: TextStyle(
+                fontSize: 16,
+                color: _mutedText,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '+ 버튼을 눌러 기프티콘을 추가해보세요',
+              style: TextStyle(fontSize: 13, color: _mutedText),
+            ),
+          ],
         ),
       ),
     );
@@ -681,100 +800,203 @@ class _GifticonListPageState extends State<GifticonListPage>
     final now = _nowProvider.now();
     final activeItems = _items.where((e) => !e.isInactiveAt(now)).toList();
     final inactiveItems = _items.where((e) => e.isInactiveAt(now)).toList();
+    final displayItems = _selectedTab == 0 ? activeItems : inactiveItems;
+    final muted = _selectedTab == 1;
 
-    Widget listSection;
-
-    if (_loading) {
-      listSection = const Expanded(
-        child: Center(child: CircularProgressIndicator()),
-      );
-    } else if (_items.isEmpty) {
-      listSection = const Expanded(
-        child: Center(child: Text('저장된 기프티콘이 없습니다.')),
-      );
-    } else {
-      listSection = Expanded(
-        child: ListView(
-          padding: const EdgeInsets.only(top: 12),
-          children: [
-            // ── 활성 섹션 ──
-            ...activeItems.map(
-              (item) => _buildGifticonCard(item, muted: false),
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: _buildCustomAppBar(),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 16),
+          _buildTabBar(activeItems.length, inactiveItems.length),
+          const SizedBox(height: 24),
+          if (!_isCheckingExactAlarmPermission && !_canScheduleExactAlarms)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: _buildExactAlarmPermissionButton(),
             ),
+          if (_loading)
+            const Expanded(child: Center(child: CircularProgressIndicator()))
+          else if (displayItems.isEmpty)
+            _buildEmptyState()
+          else
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                itemCount: displayItems.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 20),
+                itemBuilder: (_, i) =>
+                    _buildGifticonCard(displayItems[i], muted: muted),
+              ),
+            ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          child: _RegisterFab(
+            onTap: _openAnalysisPage,
+          ),
+        ),
+      ),
+    );
+  }
 
-            // ── 비활성 섹션 헤더 ──
-            if (inactiveItems.isNotEmpty) ...[
-              const SizedBox(height: 20),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  '사용 완료 / 만료',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
-                ),
-              ),
-              ...inactiveItems.map(
-                (item) => _buildGifticonCard(item, muted: true),
-              ),
-            ],
-          ],
+  Widget _buildGifticonCard(StoredGifticon item, {required bool muted}) {
+    final now = _nowProvider.now();
+    final isExpired = item.isExpiredAt(now);
+    final isUsed = item.isUsed;
+    final isShared = item.isShared;
+    final isReceived = item.isReceived;
+
+    final List<_ImageLabel> imageLabels = [];
+    if (isReceived) {
+      imageLabels.add(
+        const _ImageLabel(
+          text: '공유받음',
+          bg: _shareReceivedBg,
+          border: _shareReceivedBorder,
+        ),
+      );
+    } else if (isShared) {
+      imageLabels.add(
+        const _ImageLabel(text: '공유됨', bg: _sharedBg, border: _sharedBorder),
+      );
+    }
+
+    if (isUsed || isExpired) {
+      imageLabels.add(
+        _ImageLabel(
+          text: isUsed ? '사용함' : '만료됨',
+          bg: _inactiveBg,
+          border: _inactiveBorder,
         ),
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('꺼내먹어요')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${_myNickname ?? '사용자'}님, 안녕하세요',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '보관 중인 기프티콘을 확인해보세요',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 16),
-            listSection,
-          ],
+    return GestureDetector(
+      onTap: () => _openDetailPage(item),
+      child: Container(
+        height: 120,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            width: 1,
+            color: isReceived
+                ? _shareReceivedBorder.withValues(alpha: 0.4)
+                : isShared
+                ? _sharedBorder.withValues(alpha: 0.4)
+                : const Color(0xFFE5E5EA),
+          ),
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openAnalysisPage,
-        child: const Icon(Icons.add),
-      ),
-      bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              if (_isCheckingExactAlarmPermission ||
-                  !_canScheduleExactAlarms) ...[
-                _buildExactAlarmPermissionButton(),
-                const SizedBox(height: 12),
-              ],
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _isListeningActive ? '스크린샷 자동 감지 켜짐' : '스크린샷 자동 감지 꺼짐',
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: SizedBox(
+                  width: 100,
+                  height: 100,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _GifticonThumbnail(
+                        path: item.imagePath,
+                        muted: muted,
+                        onRetryTriggered: () {
+                          if (!mounted) return;
+                          setState(() {});
+                        },
+                      ),
+                      if (imageLabels.isNotEmpty)
+                        Positioned.fill(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              for (int i = 0; i < imageLabels.length; i++) ...[
+                                if (i > 0) const SizedBox(height: 6),
+                                _buildImageLabel(imageLabels[i]),
+                              ],
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SizedBox(
+                  height: 100,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.merchantName ?? '교환처 없음',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
+                              color: Color(0xFF8E8E93),
+                              height: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            item.itemName ?? '상품명 없음',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1A1A1A),
+                              height: 1.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        '유효기간: ${_formatDate(item.expiresAt)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w400,
+                          color: Color(0xFF1A1A1A),
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(
+                height: 100,
+                child: Align(
+                  alignment: Alignment.topRight,
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      size: 22,
+                      color: Color(0xFFC7C7CC),
                     ),
+                    onPressed: () => _confirmDelete(item),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                   ),
-                  Switch(
-                    value: _isListeningEnabled,
-                    onChanged: _toggleListening,
-                  ),
-                ],
+                ),
               ),
             ],
           ),
@@ -783,117 +1005,231 @@ class _GifticonListPageState extends State<GifticonListPage>
     );
   }
 
-  Widget _buildGifticonCard(StoredGifticon item, {required bool muted}) {
-    debugPrint(
-      '[Gifticon][Card][Build] '
-      'id=${item.id} path=${item.imagePath} muted=$muted '
-      'itemName=${item.itemName} expiresAt=${item.expiresAt}',
+  Widget _buildImageLabel(_ImageLabel label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(
+        color: label.bg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: label.border, width: 0.8),
+      ),
+      child: Text(
+        label.text,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: label.border,
+        ),
+      ),
     );
+  }
+}
 
-    final now = _nowProvider.now();
+// ── 탭 아이템 위젯 ──────────────────────────────────────────
+class _TabItem extends StatelessWidget {
+  const _TabItem({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+    required this.accent,
+  });
 
-    final statusLabel = item.isUsed
-        ? '사용함'
-        : item.isExpiredAt(now)
-        ? '만료됨'
-        : null;
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+  final Color accent;
 
-    final shareLabel = item.isReceived
-        ? '공유받음'
-        : item.isShared
-        ? '공유됨'
-        : null;
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: SizedBox(
+        height: 52,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: selected ? accent : const Color(0xFF8E8E93),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              height: 2,
+              width: double.infinity,
+              color: selected ? accent : Colors.transparent,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Opacity(
-        opacity: muted ? 0.45 : 1.0,
-        child: Card(
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(12),
-            title: Row(
-              children: [
-                Expanded(child: Text(item.itemName ?? '상품명 없음')),
-                if (shareLabel != null) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: (item.isReceived ? Colors.purple : Colors.blue)
-                          .withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      shareLabel,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: item.isReceived
-                            ? Colors.purple.shade400
-                            : Colors.blue.shade400,
-                      ),
+// ── 이미지 라벨 데이터 클래스 ───────────────────────────────
+class _ImageLabel {
+  const _ImageLabel({
+    required this.text,
+    required this.bg,
+    required this.border,
+  });
+
+  final String text;
+  final Color bg;
+  final Color border;
+}
+
+class _GifticonTopStrip extends StatelessWidget {
+  const _GifticonTopStrip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 55,
+      width: double.infinity,
+      color: const Color(0xFFE9E8F5),
+      child: Stack(
+        alignment: Alignment.center,
+        children: const [
+          Positioned(left: 20, top: 0, bottom: 0, child: _StripeGroup()),
+          Positioned(right: 20, top: 0, bottom: 0, child: _StripeGroup()),
+          Text(
+            '꺼내먹어요',
+            style: TextStyle(
+              fontFamily: 'BM KIRANGHAERANG',
+              fontSize: 28,
+              fontWeight: FontWeight.w400,
+              height: 31 / 28,
+              color: Color(0xFF382EAC),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StripeGroup extends StatelessWidget {
+  const _StripeGroup();
+
+  @override
+  Widget build(BuildContext context) {
+    const Color color = Color(0xFF4034CD);
+
+    return SizedBox(
+      width: 25,
+      height: 55,
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: _StripeLine(width: 1.2, color: color),
+          ),
+          Positioned(
+            left: 7.14,
+            top: 0,
+            bottom: 0,
+            child: _StripeLine(width: 4.8, color: color),
+          ),
+          Positioned(
+            left: 12.5,
+            top: 0,
+            bottom: 0,
+            child: _StripeLine(width: 1.2, color: color),
+          ),
+          Positioned(
+            left: 16.07,
+            top: 0,
+            bottom: 0,
+            child: _StripeLine(width: 1.2, color: color),
+          ),
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
+            child: _StripeLine(width: 4.8, color: color),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StripeLine extends StatelessWidget {
+  const _StripeLine({required this.width, required this.color});
+
+  final double width;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(width: width, color: color);
+  }
+}
+
+class _RegisterFab extends StatelessWidget {
+  const _RegisterFab({
+    required this.onTap,
+  });
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 60,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFB9B5ED).withValues(alpha: 0.61),
+            offset: const Offset(0, 6),
+            blurRadius: 9.5,
+          ),
+          BoxShadow(
+            color: const Color(0xFF000000).withValues(alpha: 0.16),
+            offset: const Offset(0, -4),
+            blurRadius: 21.7,
+          ),
+        ],
+      ),
+      child: Material(
+        color: const Color(0xFF6155F5),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: const SizedBox(
+            height: 60,
+            width: double.infinity,
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.add,
+                    color: Colors.white,
+                    size: 26,
+                  ),
+                  SizedBox(width: 14),
+                  Text(
+                    '등록하기',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      height: 1.2,
                     ),
                   ),
                 ],
-                if (statusLabel != null) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: (item.isUsed ? Colors.grey : Colors.red)
-                          .withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      statusLabel,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: item.isUsed
-                            ? Colors.grey.shade600
-                            : Colors.red.shade400,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 4),
-                Text(item.merchantName ?? '교환처 없음'),
-                const SizedBox(height: 2),
-                Text('유효기간: ${_formatDate(item.expiresAt)}'),
-              ],
-            ),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_outline),
-              onPressed: () => _confirmDelete(item),
-            ),
-            onTap: () => _openDetailPage(item),
-            leading: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: SizedBox(
-                width: 56,
-                height: 56,
-                child: _GifticonThumbnail(
-                  path: item.imagePath,
-                  muted: muted,
-                  onRetryTriggered: () {
-                    debugPrint(
-                      '[Gifticon][ListPage][RetryParentSetState] path=${item.imagePath}',
-                    );
-                    if (!mounted) return;
-                    setState(() {});
-                  },
-                ),
               ),
             ),
           ),
