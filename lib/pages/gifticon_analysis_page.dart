@@ -309,22 +309,74 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
     return _selectedImage != null;
   }
 
+  bool get _shouldConfirmBeforeLeaving {
+    return _loading || _selectedImage != null;
+  }
+
+  Future<bool> _confirmLeaveIfNeeded() async {
+    if (!_shouldConfirmBeforeLeaving) {
+      return true;
+    }
+
+    final bool? shouldLeave = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        final description = '지금 나가면 분석 결과가 저장되지 않아요.\n정말 나가시겠어요?';
+
+        return AlertDialog(
+          title: const Text('분석 페이지 나가기'),
+          content: Text(description),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('아니오'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('네'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return shouldLeave ?? false;
+  }
+
+  Future<void> _handleBackPressed() async {
+    final canLeave = await _confirmLeaveIfNeeded();
+    if (!mounted || !canLeave) return;
+    Navigator.of(context).pop();
+  }
+
   bool get _canSave {
     return _isGifticon == true && _parsedInfo != null && _selectedImage != null;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: _buildAppBar(),
-      body: !_initialized
-          ? const Center(child: CircularProgressIndicator())
-          : SafeArea(
-        top: false,
-        child: _showResultForm
-            ? _buildResultBody(context)
-            : _buildInitialBody(context),
+    return PopScope(
+      canPop: !_shouldConfirmBeforeLeaving,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+
+        final canLeave = await _confirmLeaveIfNeeded();
+        if (!mounted || !canLeave) return;
+
+        Navigator.of(context).pop(result);
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: _buildAppBar(),
+        body: !_initialized
+            ? const Center(child: CircularProgressIndicator())
+            : SafeArea(
+          top: false,
+          child: _showResultForm
+              ? _buildResultBody(context)
+              : _buildInitialBody(context),
+        ),
       ),
     );
   }
@@ -346,7 +398,7 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: IconButton(
-                      onPressed: () => Navigator.of(context).maybePop(),
+                      onPressed: _handleBackPressed,
                       icon: const Icon(
                         Icons.arrow_back_ios_new,
                         size: 22,

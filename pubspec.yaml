@@ -109,7 +109,7 @@ flutter:
           weight: 400
 
     - family: SUIT
-    - fonts:
+      fonts:
         - asset: assets/fonts/SUIT-Bold.ttf
           weight: 700
         - asset: assets/fonts/SUIT-Regular.ttf

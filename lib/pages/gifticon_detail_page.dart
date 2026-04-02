@@ -60,6 +60,7 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
 
   late StoredGifticon _item;
   bool _isMarkingUsed = false;
+  bool _isDeleting = false;
 
   @override
   void initState() {
@@ -78,6 +79,53 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
     return !_item.isShared &&
         !_item.isReceived &&
         !_item.isUsed;
+  }
+
+  Future<void> _deleteGifticon() async {
+    if (_isDeleting) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('기프티콘 삭제'),
+        content: const Text('이 기프티콘을 삭제할까요?\n삭제 후에는 되돌릴 수 없어요.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFEC221F),
+            ),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isDeleting = true);
+
+    try {
+      await widget.notificationService.cancelExpiryNotifications(_item.id);
+
+      await widget.storageService.deleteGifticon(_item.id);
+
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('삭제 실패: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isDeleting = false);
+      }
+    }
   }
 
   String _formatDate(DateTime? date) {
@@ -325,7 +373,7 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
           child: SizedBox(
             height: 72,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 20, 0),
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
               child: Stack(
                 alignment: Alignment.center,
                 children: [
@@ -350,6 +398,28 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
                         color: Color(0xFF1A1A1A),
                         height: 1.2,
                       ),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      onPressed: _isDeleting ? null : _deleteGifticon,
+                      icon: _isDeleting
+                          ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      )
+                          : const Icon(
+                        Icons.delete_outline,
+                        size: 24,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                      splashRadius: 20,
+                      tooltip: '삭제',
                     ),
                   ),
                 ],
@@ -478,7 +548,7 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
             color: const Color(0xFF4034CD),
             width: 1,
           ),
-          boxShadow: _buttonShadows,
+          // boxShadow: _buttonShadows,
         ),
         child: Material(
           color: Colors.transparent,

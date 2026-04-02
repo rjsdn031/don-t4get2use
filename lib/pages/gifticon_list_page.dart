@@ -837,9 +837,7 @@ class _GifticonListPageState extends State<GifticonListPage>
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-          child: _RegisterFab(
-            onTap: _openAnalysisPage,
-          ),
+          child: _RegisterFab(onTap: _openAnalysisPage),
         ),
       ),
     );
@@ -982,22 +980,23 @@ class _GifticonListPageState extends State<GifticonListPage>
                   ),
                 ),
               ),
-              SizedBox(
-                height: 100,
-                child: Align(
-                  alignment: Alignment.topRight,
-                  child: IconButton(
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      size: 22,
-                      color: Color(0xFFC7C7CC),
+              if (_selectedTab == 1)
+                SizedBox(
+                  height: 100,
+                  child: Align(
+                    alignment: Alignment.topRight,
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        size: 22,
+                        color: Color(0xFFC7C7CC),
+                      ),
+                      onPressed: () => _confirmDelete(item),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
                     ),
-                    onPressed: () => _confirmDelete(item),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
                   ),
                 ),
-              ),
             ],
           ),
         ),
@@ -1176,9 +1175,7 @@ class _StripeLine extends StatelessWidget {
 }
 
 class _RegisterFab extends StatelessWidget {
-  const _RegisterFab({
-    required this.onTap,
-  });
+  const _RegisterFab({required this.onTap});
 
   final VoidCallback onTap;
 
@@ -1214,11 +1211,7 @@ class _RegisterFab extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.add,
-                    color: Colors.white,
-                    size: 26,
-                  ),
+                  Icon(Icons.add, color: Colors.white, size: 26),
                   SizedBox(width: 14),
                   Text(
                     '등록하기',
