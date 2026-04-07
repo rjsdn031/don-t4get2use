@@ -6,6 +6,7 @@ import '../models/stored_gifticon.dart';
 import '../services/gifticon_notification_service.dart';
 import '../services/gifticon_sharing_service.dart';
 import '../services/gifticon_storage_service.dart';
+import '../services/gifticon_work_service.dart';
 import 'gifticon_edit_page.dart';
 
 class GifticonDetailPage extends StatefulWidget {
@@ -57,6 +58,7 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
   ];
 
   late final ScrollController _scrollController;
+  late final GifticonWorkService _workService;
 
   late StoredGifticon _item;
   bool _isMarkingUsed = false;
@@ -65,6 +67,7 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
   @override
   void initState() {
     _scrollController = ScrollController();
+    _workService = GifticonWorkService();
     super.initState();
     _item = widget.item;
   }
@@ -79,6 +82,64 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
     return !_item.isShared &&
         !_item.isReceived &&
         !_item.isUsed;
+  }
+
+  Future<void> _rescheduleAutoShare(StoredGifticon item) async {
+    await _workService.cancelAutoShareWork(item.id);
+
+    if (item.isUsed || item.isShared || item.isReceived) {
+      debugPrint(
+        '[Gifticon][Detail] skip auto share reschedule'
+            ' id=${item.id}'
+            ' used=${item.isUsed}'
+            ' shared=${item.isShared}'
+            ' received=${item.isReceived}',
+      );
+      return;
+    }
+
+    final expiresAt = item.expiresAt;
+    if (expiresAt == null) {
+      debugPrint(
+        '[Gifticon][Detail] skip auto share reschedule: expiresAt is null'
+            ' id=${item.id}',
+      );
+      return;
+    }
+
+    final autoShareAt = DateTime(
+      expiresAt.year,
+      expiresAt.month,
+      expiresAt.day,
+      8,
+      0,
+      0,
+    );
+
+    final now = DateTime.now();
+    final delay = autoShareAt.difference(now);
+
+    debugPrint(
+      '[Gifticon][Detail] reschedule auto share'
+          ' id=${item.id}'
+          ' now=$now'
+          ' expiresAt=$expiresAt'
+          ' autoShareAt=$autoShareAt'
+          ' delay=$delay',
+    );
+
+    if (delay.isNegative || delay == Duration.zero) {
+      debugPrint(
+        '[Gifticon][Detail] auto share time already passed, skip'
+            ' id=${item.id}',
+      );
+      return;
+    }
+
+    await _workService.scheduleAutoShareWork(
+      gifticonId: item.id,
+      initialDelay: delay,
+    );
   }
 
   Future<void> _deleteGifticon() async {
@@ -239,7 +300,9 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
         _item.id,
         myNickname: myNickname,
       );
+
       await widget.notificationService.cancelExpiryNotifications(_item.id);
+      await _workService.cancelAutoShareWork(_item.id);
 
       if (widget.sharingService != null && (_item.isShared || _item.isReceived)) {
         await widget.sharingService!.markAsUsedRemote(
@@ -301,15 +364,24 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
         _formatDate(previousItem.expiresAt) != _formatDate(updated.expiresAt);
 
     try {
-      bool scheduled = true;
+      bool notificationScheduled = true;
 
       if (changedExpiry) {
+        debugPrint(
+          '[Gifticon][Detail] expiry changed'
+              ' id=${updated.id}'
+              ' before=${previousItem.expiresAt}'
+              ' after=${updated.expiresAt}',
+        );
+
         await widget.notificationService.cancelExpiryNotifications(updated.id);
 
         if (!updated.isUsed) {
-          scheduled =
+          notificationScheduled =
           await widget.notificationService.scheduleExpiryNotifications(updated);
         }
+
+        await _rescheduleAutoShare(updated);
       }
 
       if (!mounted) return;
@@ -321,9 +393,9 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
       String message = '수정사항이 저장되었습니다.';
 
       if (changedExpiry && !updated.isUsed) {
-        message = scheduled
-            ? '수정사항이 저장되고 만료 알림이 다시 예약되었습니다.'
-            : '수정사항은 저장되었지만 만료 알림을 다시 등록하지 못했습니다.';
+        message = notificationScheduled
+            ? '수정사항이 저장되었습니다.'
+            : '수정사항은 저장되었지만 알림을 등록하지 못했습니다.';
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -338,7 +410,7 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('수정사항은 저장되었지만 만료 알림 등록에 실패했습니다.\n$e'),
+          content: Text('수정사항은 저장되었지만 재예약 처리에 실패했습니다.\n$e'),
         ),
       );
     }
