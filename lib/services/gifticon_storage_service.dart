@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
@@ -11,6 +10,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/gifticon_models.dart';
 import '../models/stored_gifticon.dart';
+import 'app_logger.dart';
 import 'now_provider.dart';
 
 // WorkManager isolate → 메인 isolate 갱신 신호용 키
@@ -39,7 +39,6 @@ class GifticonStorageService {
 
   Stream<List<StoredGifticon>> watchGifticons() => _itemsController.stream;
 
-  /// 외부에서 스트림 갱신을 트리거할 때 사용 (알림 콜백 등)
   void emitItems() => _emitItems();
 
   void _emitItems() {
@@ -59,7 +58,6 @@ class GifticonStorageService {
     });
   }
 
-
   void dispose() {
     _itemsController.close();
   }
@@ -67,6 +65,13 @@ class GifticonStorageService {
   Future<void> init() async {
     if (!Hive.isBoxOpen(_boxName)) {
       await Hive.openBox(_boxName);
+      await AppLogger.log(
+        tag: 'Storage',
+        event: 'box_opened',
+        data: {
+          'boxName': _boxName,
+        },
+      );
     }
     _emitItems();
   }
@@ -74,11 +79,24 @@ class GifticonStorageService {
   Future<void> reopenBox() async {
     if (Hive.isBoxOpen(_boxName)) {
       await Hive.box(_boxName).close();
-      debugPrint('[Gifticon][Storage] box closed: $_boxName');
+      await AppLogger.log(
+        tag: 'Storage',
+        event: 'box_closed',
+        data: {
+          'boxName': _boxName,
+        },
+      );
     }
 
     await Hive.openBox(_boxName);
-    debugPrint('[Gifticon][Storage] box reopened: $_boxName');
+
+    await AppLogger.log(
+      tag: 'Storage',
+      event: 'box_reopened',
+      data: {
+        'boxName': _boxName,
+      },
+    );
 
     _emitItems();
   }
@@ -89,13 +107,16 @@ class GifticonStorageService {
   }) async {
     final existing = _findDuplicate(info);
     if (existing != null) {
-      debugPrint(
-        '[Gifticon][Storage] duplicate detected — skipping save. '
-            'existing id=${existing.id}, '
-            'couponNumber=${existing.couponNumber}, '
-            'merchantName=${existing.merchantName}, '
-            'itemName=${existing.itemName}, '
-            'expiresAt=${existing.expiresAt}',
+      await AppLogger.log(
+        tag: 'Storage',
+        event: 'duplicate_detected_skip_save',
+        data: {
+          'existingId': existing.id,
+          'couponNumber': existing.couponNumber,
+          'merchantName': existing.merchantName,
+          'itemName': existing.itemName,
+          'expiresAt': existing.expiresAt?.toIso8601String(),
+        },
       );
       _emitItemsWithFollowUps();
       return SaveGifticonResult(gifticon: existing, isDuplicate: true);
@@ -121,12 +142,16 @@ class GifticonStorageService {
     await box.put(id, stored.toJson());
     _emitItemsWithFollowUps();
 
-    debugPrint(
-      '[Gifticon][Storage] saved new gifticon id=$id, '
-          'couponNumber=${info.couponNumber}, '
-          'merchantName=${info.merchantName}, '
-          'itemName=${info.itemName}, '
-          'expiresAt=${info.expiresAt}',
+    await AppLogger.log(
+      tag: 'Storage',
+      event: 'saved_new_gifticon',
+      data: {
+        'id': id,
+        'couponNumber': info.couponNumber,
+        'merchantName': info.merchantName,
+        'itemName': info.itemName,
+        'expiresAt': info.expiresAt?.toIso8601String(),
+      },
     );
 
     return SaveGifticonResult(gifticon: stored, isDuplicate: false);
@@ -163,7 +188,15 @@ class GifticonStorageService {
     await box.put(id, updated.toJson());
     _emitItemsWithFollowUps();
 
-    debugPrint('[Gifticon][Storage] marked as used: id=$id nickname=$myNickname');
+    await AppLogger.log(
+      tag: 'Storage',
+      event: 'marked_as_used',
+      data: {
+        'id': id,
+        'nickname': myNickname,
+      },
+    );
+
     return updated;
   }
 
@@ -178,7 +211,14 @@ class GifticonStorageService {
     final updated = existing.copyWith(sharedAt: _nowProvider.now());
     await box.put(id, updated.toJson());
     _emitItems();
-    debugPrint('[Gifticon][Storage] marked as shared: id=$id');
+
+    await AppLogger.log(
+      tag: 'Storage',
+      event: 'marked_as_shared',
+      data: {
+        'id': id,
+      },
+    );
   }
 
   Future<StoredGifticon> saveReceivedGifticon({
@@ -198,12 +238,30 @@ class GifticonStorageService {
       final stored = StoredGifticon.fromJson(existing as Map);
 
       if (stored.ownerNickname == ownerNickname || ownerNickname == null) {
+        await AppLogger.log(
+          tag: 'Storage',
+          event: 'save_received_existing_return',
+          data: {
+            'gifticonId': gifticonId,
+            'ownerNickname': ownerNickname,
+          },
+        );
         return stored;
       }
 
       final updated = stored.copyWith(ownerNickname: ownerNickname);
       await box.put(gifticonId, updated.toJson());
       _emitItems();
+
+      await AppLogger.log(
+        tag: 'Storage',
+        event: 'save_received_existing_updated_owner_nickname',
+        data: {
+          'gifticonId': gifticonId,
+          'ownerNickname': ownerNickname,
+        },
+      );
+
       return updated;
     }
 
@@ -226,7 +284,21 @@ class GifticonStorageService {
 
     await box.put(gifticonId, stored.toJson());
     _emitItemsWithFollowUps();
-    debugPrint('[Gifticon][Storage] received gifticon saved: id=$gifticonId');
+
+    await AppLogger.log(
+      tag: 'Storage',
+      event: 'received_gifticon_saved',
+      data: {
+        'id': gifticonId,
+        'merchantName': merchantName,
+        'itemName': itemName,
+        'couponNumber': couponNumber,
+        'expiresAt': expiresAt.toIso8601String(),
+        'receivedFrom': receivedFrom,
+        'ownerNickname': ownerNickname,
+      },
+    );
+
     return stored;
   }
 
@@ -240,7 +312,19 @@ class GifticonStorageService {
 
     await box.put(item.id, item.toJson());
     _emitItems();
-    debugPrint('[Gifticon][Storage] updated gifticon: id=${item.id}');
+
+    await AppLogger.log(
+      tag: 'Storage',
+      event: 'updated_gifticon',
+      data: {
+        'id': item.id,
+        'merchantName': item.merchantName,
+        'itemName': item.itemName,
+        'couponNumber': item.couponNumber,
+        'expiresAt': item.expiresAt?.toIso8601String(),
+      },
+    );
+
     return item;
   }
 
@@ -265,25 +349,36 @@ class GifticonStorageService {
 
     await box.put(id, updated.toJson());
     _emitItems();
-    debugPrint(
-      '[Gifticon][Storage] markAsUsedIfExists: id=$id usedByNickname=$usedByNickname',
+
+    await AppLogger.log(
+      tag: 'Storage',
+      event: 'mark_as_used_if_exists',
+      data: {
+        'id': id,
+        'usedByNickname': usedByNickname,
+      },
     );
   }
 
-  /// WorkManager isolate에서 저장 완료 후 호출 — 메인 isolate에 갱신 신호 전달
   static Future<void> markPendingRefresh() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(kPendingRefreshKey, true);
-    debugPrint('[Gifticon][Storage] pendingRefresh set');
+
+    await AppLogger.log(
+      tag: 'Storage',
+      event: 'pending_refresh_set',
+    );
   }
 
-  /// 메인 isolate에서 polling 시 호출 — 플래그가 있으면 true 반환 후 초기화
   static Future<bool> consumePendingRefresh() async {
     final prefs = await SharedPreferences.getInstance();
     final pending = prefs.getBool(kPendingRefreshKey) ?? false;
     if (pending) {
       await prefs.remove(kPendingRefreshKey);
-      debugPrint('[Gifticon][Storage] pendingRefresh consumed');
+      await AppLogger.log(
+        tag: 'Storage',
+        event: 'pending_refresh_consumed',
+      );
     }
     return pending;
   }
@@ -298,11 +393,27 @@ class GifticonStorageService {
 
       if (await file.exists()) {
         await file.delete();
+        await AppLogger.log(
+          tag: 'Storage',
+          event: 'image_deleted',
+          data: {
+            'id': id,
+            'imagePath': stored.imagePath,
+          },
+        );
       }
     }
 
     await box.delete(id);
     _emitItems();
+
+    await AppLogger.log(
+      tag: 'Storage',
+      event: 'gifticon_deleted',
+      data: {
+        'id': id,
+      },
+    );
   }
 
   StoredGifticon? _findDuplicate(GifticonInfo info) {
@@ -313,8 +424,12 @@ class GifticonStorageService {
       for (final item in items) {
         final existingCoupon = _normalize(item.couponNumber);
         if (existingCoupon != null && existingCoupon == normalizedCoupon) {
-          debugPrint(
-            '[Gifticon][Storage] duplicate matched by couponNumber: $normalizedCoupon',
+          AppLogger.log(
+            tag: 'Storage',
+            event: 'duplicate_matched_coupon',
+            data: {
+              'couponNumber': normalizedCoupon,
+            },
           );
           return item;
         }
@@ -328,8 +443,9 @@ class GifticonStorageService {
     if (normalizedMerchant == null &&
         normalizedItem == null &&
         normalizedExpiresAt == null) {
-      debugPrint(
-        '[Gifticon][Storage] all fields null — skipping fuzzy duplicate check',
+      AppLogger.log(
+        tag: 'Storage',
+        event: 'duplicate_skip_all_fields_null',
       );
       return null;
     }
@@ -340,9 +456,14 @@ class GifticonStorageService {
       final sameExpiresAt = _normalizeDate(item.expiresAt) == normalizedExpiresAt;
 
       if (sameMerchant && sameItem && sameExpiresAt) {
-        debugPrint(
-          '[Gifticon][Storage] duplicate matched by merchant+item+expiresAt: '
-              'merchant=$normalizedMerchant, item=$normalizedItem, expiresAt=$normalizedExpiresAt',
+        AppLogger.log(
+          tag: 'Storage',
+          event: 'duplicate_matched_merchant_item_expiry',
+          data: {
+            'merchant': normalizedMerchant,
+            'item': normalizedItem,
+            'expiresAt': normalizedExpiresAt,
+          },
         );
         return item;
       }
@@ -374,6 +495,13 @@ class GifticonStorageService {
 
     if (!await gifticonDir.exists()) {
       await gifticonDir.create(recursive: true);
+      await AppLogger.log(
+        tag: 'Storage',
+        event: 'gifticon_dir_created',
+        data: {
+          'path': gifticonDir.path,
+        },
+      );
     }
 
     final sourceFile = File(sourceImagePath);
@@ -386,9 +514,14 @@ class GifticonStorageService {
 
     await _waitUntilDecodable(targetFile);
 
-    debugPrint(
-      '[Gifticon][Storage] image ready '
-          'source=$sourceImagePath target=$targetPath bytes=${bytes.length}',
+    await AppLogger.log(
+      tag: 'Storage',
+      event: 'image_ready',
+      data: {
+        'source': sourceImagePath,
+        'target': targetPath,
+        'bytes': bytes.length,
+      },
     );
 
     return targetFile.path;
@@ -410,14 +543,18 @@ class GifticonStorageService {
             return;
           }
         }
-      } catch (_) {
-        // 아직 디코딩 가능한 상태가 아니면 재시도
-      }
+      } catch (_) {}
 
       await Future<void>.delayed(interval);
     }
 
-    debugPrint('[Gifticon][Storage] waitUntilDecodable timeout: ${file.path}');
+    await AppLogger.log(
+      tag: 'Storage',
+      event: 'wait_until_decodable_timeout',
+      data: {
+        'path': file.path,
+      },
+    );
   }
 
   String _getExtension(String path) {

@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 
 import '../models/stored_gifticon.dart';
+import 'app_logger.dart';
 import 'device_id_service.dart';
 import 'gifticon_storage_service.dart';
 
@@ -31,15 +31,39 @@ class GifticonSharingService {
   Future<void> uploadForSharing(StoredGifticon stored) async {
     try {
       if (stored.sharedAt != null) {
-        debugPrint('[Sharing] already shared: id=${stored.id}');
+        await AppLogger.log(
+          tag: 'Sharing',
+          event: 'upload_skip_already_shared',
+          data: {
+            'gifticonId': stored.id,
+          },
+        );
         return;
       }
+
+      await AppLogger.log(
+        tag: 'Sharing',
+        event: 'upload_start',
+        data: {
+          'gifticonId': stored.id,
+          'merchantName': stored.merchantName,
+          'itemName': stored.itemName,
+          'couponNumber': stored.couponNumber,
+          'expiresAt': stored.expiresAt?.toIso8601String(),
+        },
+      );
 
       final deviceId = await deviceIdService.getDeviceId();
       final imageBase64 = await _readImageAsBase64(stored.imagePath);
 
       if (imageBase64 == null) {
-        debugPrint('[Sharing] image base64 encode failed: id=${stored.id}');
+        await AppLogger.log(
+          tag: 'Sharing',
+          event: 'upload_skip_image_encode_failed',
+          data: {
+            'gifticonId': stored.id,
+          },
+        );
         return;
       }
 
@@ -57,9 +81,25 @@ class GifticonSharingService {
       );
 
       await storageService.markAsShared(stored.id);
-      debugPrint('[Sharing] uploaded for sharing: id=${stored.id}');
-    } catch (e) {
-      debugPrint('[Sharing] uploadForSharing failed: $e');
+
+      await AppLogger.log(
+        tag: 'Sharing',
+        event: 'upload_success',
+        data: {
+          'gifticonId': stored.id,
+          'ownerId': deviceId,
+        },
+      );
+    } catch (e, st) {
+      await AppLogger.log(
+        tag: 'Sharing',
+        event: 'upload_failed',
+        data: {
+          'gifticonId': stored.id,
+          'error': '$e',
+          'stack': '$st',
+        },
+      );
     }
   }
 
@@ -69,6 +109,15 @@ class GifticonSharingService {
     try {
       final deviceId = await deviceIdService.getDeviceId();
 
+      await AppLogger.log(
+        tag: 'Sharing',
+        event: 'mark_used_remote_start',
+        data: {
+          'gifticonId': gifticonId,
+          'usedBy': deviceId,
+        },
+      );
+
       await _dio.post<void>(
         '/api/gifticons/used',
         data: {
@@ -77,9 +126,24 @@ class GifticonSharingService {
         },
       );
 
-      debugPrint('[Sharing] markAsUsedRemote success: id=$gifticonId');
-    } catch (e) {
-      debugPrint('[Sharing] markAsUsedRemote failed: $e');
+      await AppLogger.log(
+        tag: 'Sharing',
+        event: 'mark_used_remote_success',
+        data: {
+          'gifticonId': gifticonId,
+          'usedBy': deviceId,
+        },
+      );
+    } catch (e, st) {
+      await AppLogger.log(
+        tag: 'Sharing',
+        event: 'mark_used_remote_failed',
+        data: {
+          'gifticonId': gifticonId,
+          'error': '$e',
+          'stack': '$st',
+        },
+      );
     }
   }
 
@@ -94,13 +158,34 @@ class GifticonSharingService {
     required DateTime expiresAt,
   }) async {
     try {
+      await AppLogger.log(
+        tag: 'Sharing',
+        event: 'receive_start',
+        data: {
+          'gifticonId': gifticonId,
+          'imageUrl': imageUrl,
+          'ownerId': ownerId,
+          'ownerNickname': ownerNickname,
+          'merchantName': merchantName,
+          'itemName': itemName,
+          'couponNumber': couponNumber,
+          'expiresAt': expiresAt.toIso8601String(),
+        },
+      );
+
       final localPath = await _downloadImageFromStorage(
         imageUrl: imageUrl,
         gifticonId: gifticonId,
       );
 
       if (localPath == null) {
-        debugPrint('[Sharing] image download failed: id=$gifticonId');
+        await AppLogger.log(
+          tag: 'Sharing',
+          event: 'receive_skip_download_failed',
+          data: {
+            'gifticonId': gifticonId,
+          },
+        );
         return null;
       }
 
@@ -115,12 +200,27 @@ class GifticonSharingService {
         ownerNickname: ownerNickname,
       );
 
-      debugPrint(
-        '[Sharing] received gifticon saved: id=$gifticonId ownerNickname=$ownerNickname',
+      await AppLogger.log(
+        tag: 'Sharing',
+        event: 'receive_success',
+        data: {
+          'gifticonId': gifticonId,
+          'ownerNickname': ownerNickname,
+          'localPath': localPath,
+        },
       );
+
       return stored;
-    } catch (e) {
-      debugPrint('[Sharing] receiveSharedGifticon failed: $e');
+    } catch (e, st) {
+      await AppLogger.log(
+        tag: 'Sharing',
+        event: 'receive_failed',
+        data: {
+          'gifticonId': gifticonId,
+          'error': '$e',
+          'stack': '$st',
+        },
+      );
       return null;
     }
   }
@@ -129,14 +229,38 @@ class GifticonSharingService {
     try {
       final file = File(localPath);
       if (!await file.exists()) {
-        debugPrint('[Sharing] image file not found: $localPath');
+        await AppLogger.log(
+          tag: 'Sharing',
+          event: 'image_file_missing',
+          data: {
+            'localPath': localPath,
+          },
+        );
         return null;
       }
 
       final bytes = await file.readAsBytes();
+
+      await AppLogger.log(
+        tag: 'Sharing',
+        event: 'image_base64_encoded',
+        data: {
+          'localPath': localPath,
+          'byteLength': bytes.length,
+        },
+      );
+
       return base64Encode(bytes);
-    } catch (e) {
-      debugPrint('[Sharing] base64 encode failed: $e');
+    } catch (e, st) {
+      await AppLogger.log(
+        tag: 'Sharing',
+        event: 'image_base64_encode_failed',
+        data: {
+          'localPath': localPath,
+          'error': '$e',
+          'stack': '$st',
+        },
+      );
       return null;
     }
   }
@@ -149,6 +273,16 @@ class GifticonSharingService {
       final tempDir = Directory.systemTemp;
       final localFile = File('${tempDir.path}/gifticon_received_$gifticonId.jpg');
 
+      await AppLogger.log(
+        tag: 'Sharing',
+        event: 'download_start',
+        data: {
+          'gifticonId': gifticonId,
+          'imageUrl': imageUrl,
+          'localPath': localFile.path,
+        },
+      );
+
       final response = await _dio.get<List<int>>(
         imageUrl,
         options: Options(responseType: ResponseType.bytes),
@@ -156,15 +290,41 @@ class GifticonSharingService {
 
       final bytes = response.data;
       if (bytes == null) {
-        debugPrint('[Sharing] download response empty');
+        await AppLogger.log(
+          tag: 'Sharing',
+          event: 'download_empty_response',
+          data: {
+            'gifticonId': gifticonId,
+            'imageUrl': imageUrl,
+          },
+        );
         return null;
       }
 
       await localFile.writeAsBytes(bytes, flush: true);
-      debugPrint('[Sharing] downloaded from url: ${localFile.path}');
+
+      await AppLogger.log(
+        tag: 'Sharing',
+        event: 'download_success',
+        data: {
+          'gifticonId': gifticonId,
+          'localPath': localFile.path,
+          'byteLength': bytes.length,
+        },
+      );
+
       return localFile.path;
-    } catch (e) {
-      debugPrint('[Sharing] storage download failed: $e');
+    } catch (e, st) {
+      await AppLogger.log(
+        tag: 'Sharing',
+        event: 'download_failed',
+        data: {
+          'gifticonId': gifticonId,
+          'imageUrl': imageUrl,
+          'error': '$e',
+          'stack': '$st',
+        },
+      );
       return null;
     }
   }

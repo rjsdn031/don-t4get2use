@@ -7,12 +7,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'gifticon_sharing_service.dart';
 import 'gifticon_storage_service.dart';
+import 'app_logger.dart';
 
 const String _pendingFcmEventsKey = 'gifticon_pending_fcm_events';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  debugPrint('[FCM][Background] message received: ${message.messageId}');
+  await AppLogger.log(
+    tag: 'FCM',
+    event: 'background_message_received',
+    data: {
+      'messageId': message.messageId,
+    },
+  );
   await _enqueuePendingFcmEvent(message.data);
   await GifticonStorageService.markPendingRefresh();
 }
@@ -25,9 +32,21 @@ Future<void> _enqueuePendingFcmEvent(Map<String, dynamic> data) async {
     current.add(jsonEncode(Map<String, dynamic>.from(data)));
 
     await prefs.setStringList(_pendingFcmEventsKey, current);
-    debugPrint('[FCM][Background] pending event queued: type=${data['type']}');
+    await AppLogger.log(
+      tag: 'FCM',
+      event: 'pending_event_queued',
+      data: {
+        'type': data['type'],
+      },
+    );
   } catch (e) {
-    debugPrint('[FCM][Background] failed to queue pending event: $e');
+    await AppLogger.log(
+      tag: 'FCM',
+      event: 'pending_event_queue_failed',
+      data: {
+        'error': '$e',
+      },
+    );
   }
 }
 
@@ -50,14 +69,32 @@ Future<List<Map<String, dynamic>>> _consumePendingFcmEvents() async {
           events.add(Map<String, dynamic>.from(decoded));
         }
       } catch (e) {
-        debugPrint('[FCM] failed to decode pending event: $e');
+        await AppLogger.log(
+          tag: 'FCM',
+          event: 'pending_event_decode_failed',
+          data: {
+            'error': '$e',
+          },
+        );
       }
     }
 
-    debugPrint('[FCM] consumed pending events: count=${events.length}');
+    await AppLogger.log(
+      tag: 'FCM',
+      event: 'pending_events_consumed',
+      data: {
+        'count': events.length,
+      },
+    );
     return events;
   } catch (e) {
-    debugPrint('[FCM] failed to consume pending events: $e');
+    await AppLogger.log(
+      tag: 'FCM',
+      event: 'consume_pending_failed',
+      data: {
+        'error': '$e',
+      },
+    );
     return <Map<String, dynamic>>[];
   }
 }
@@ -79,11 +116,17 @@ class FcmService {
 
     final initial = await FirebaseMessaging.instance.getInitialMessage();
     if (initial != null) {
-      debugPrint('[FCM] launched from terminated via notification');
+      await AppLogger.log(
+        tag: 'FCM',
+        event: 'launched_from_terminated',
+      );
       await _onMessageOpenedApp(initial);
     }
 
-    debugPrint('[FCM] FcmService initialized');
+    await AppLogger.log(
+      tag: 'FCM',
+      event: 'initialized',
+    );
   }
 
   Future<void> _drainPendingEvents() async {
@@ -98,7 +141,13 @@ class FcmService {
   }
 
   Future<void> _onForegroundMessage(RemoteMessage message) async {
-    debugPrint('[FCM][Foreground] ${message.messageId}');
+    await AppLogger.log(
+      tag: 'FCM',
+      event: 'foreground_message',
+      data: {
+        'messageId': message.messageId,
+      },
+    );
 
     await _handleGifticonData(message.data, source: 'foreground');
 
@@ -108,7 +157,13 @@ class FcmService {
   }
 
   Future<void> _onMessageOpenedApp(RemoteMessage message) async {
-    debugPrint('[FCM][OpenedApp] ${message.messageId}');
+    await AppLogger.log(
+      tag: 'FCM',
+      event: 'foreground_message',
+      data: {
+        'messageId': message.messageId,
+      },
+    );
     await _handleGifticonData(message.data, source: 'opened_app');
   }
 
@@ -118,7 +173,15 @@ class FcmService {
       }) async {
     final type = data['type'] as String?;
 
-    debugPrint('[FCM][$source] type=$type data=$data');
+    await AppLogger.log(
+      tag: 'FCM',
+      event: 'handle_data',
+      data: {
+        'source': source,
+        'type': type,
+        'data': data,
+      },
+    );
 
     if (type == 'gifticon_received') {
       await _handleGifticonReceived(data);
@@ -130,7 +193,14 @@ class FcmService {
       return;
     }
 
-    debugPrint('[FCM][$source] unknown type: $type');
+    await AppLogger.log(
+      tag: 'FCM',
+      event: 'unknown_type',
+      data: {
+        'source': source,
+        'type': type,
+      },
+    );
   }
 
   Future<void> _handleGifticonReceived(Map<String, dynamic> data) async {
@@ -145,13 +215,22 @@ class FcmService {
           imageUrl == null ||
           ownerId == null ||
           expiresAtStr == null) {
-        debugPrint('[FCM] gifticon_received: missing required fields');
+        await AppLogger.log(
+          tag: 'FCM',
+          event: 'gifticon_received_missing_fields',
+        );
         return;
       }
 
       final expiresAt = DateTime.tryParse(expiresAtStr);
       if (expiresAt == null) {
-        debugPrint('[FCM] gifticon_received: invalid expiresAt');
+        await AppLogger.log(
+          tag: 'FCM',
+          event: 'gifticon_received_invalid_expires_at',
+          data: {
+            'expiresAt': expiresAtStr,
+          },
+        );
         return;
       }
 
@@ -166,12 +245,22 @@ class FcmService {
         expiresAt: expiresAt,
       );
 
-      debugPrint(
-        '[FCM] gifticon_received handled locally: '
-            'id=$gifticonId ownerNickname=$ownerNickname',
+      await AppLogger.log(
+        tag: 'FCM',
+        event: 'gifticon_received_handled',
+        data: {
+          'gifticonId': gifticonId,
+          'ownerNickname': ownerNickname,
+        },
       );
     } catch (e) {
-      debugPrint('[FCM] _handleGifticonReceived error: $e');
+      await AppLogger.log(
+        tag: 'FCM',
+        event: 'gifticon_received_error',
+        data: {
+          'error': '$e',
+        },
+      );
     }
   }
 
@@ -180,7 +269,10 @@ class FcmService {
       final gifticonId = data['gifticonId'] as String?;
       final usedByNickname = data['usedByNickname'] as String?;
       if (gifticonId == null) {
-        debugPrint('[FCM] gifticon_used: missing gifticonId');
+        await AppLogger.log(
+          tag: 'FCM',
+          event: 'gifticon_used_missing_id',
+        );
         return;
       }
 
@@ -189,12 +281,22 @@ class FcmService {
         usedByNickname: usedByNickname,
       );
 
-      debugPrint(
-        '[FCM] gifticon_used handled locally: '
-            'id=$gifticonId usedByNickname=$usedByNickname',
+      await AppLogger.log(
+        tag: 'FCM',
+        event: 'gifticon_used_handled',
+        data: {
+          'gifticonId': gifticonId,
+          'usedByNickname': usedByNickname,
+        },
       );
     } catch (e) {
-      debugPrint('[FCM] _handleGifticonUsed error: $e');
+      await AppLogger.log(
+        tag: 'FCM',
+        event: 'gifticon_used_error',
+        data: {
+          'error': '$e',
+        },
+      );
     }
   }
 

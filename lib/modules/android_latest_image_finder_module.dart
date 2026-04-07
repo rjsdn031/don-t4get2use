@@ -1,7 +1,7 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../models/local_image_data.dart';
+import '../services/app_logger.dart';
 import 'latest_image_finder_module.dart';
 
 class AndroidLatestImageFinderModule implements LatestImageFinderModule {
@@ -15,17 +15,30 @@ class AndroidLatestImageFinderModule implements LatestImageFinderModule {
         'findLatestImage',
       );
 
-      debugPrint('[Gifticon][LatestImage] raw result: $result');
+      await AppLogger.log(
+        tag: 'LatestImage',
+        event: 'raw_result',
+        data: {
+          'resultIsNull': result == null,
+        },
+      );
 
       if (result == null) {
-        debugPrint('[Gifticon][LatestImage] result is null');
+        await AppLogger.log(
+          tag: 'LatestImage',
+          event: 'result_null',
+        );
         return null;
       }
 
       final debugLogs = result['debugLogs'];
       if (debugLogs is List) {
         for (final log in debugLogs) {
-          debugPrint('[Gifticon][LatestImage][Native] $log');
+          await AppLogger.log(
+            tag: 'LatestImage',
+            event: 'native_log',
+            data: {'message': '$log'},
+          );
         }
       }
 
@@ -33,12 +46,21 @@ class AndroidLatestImageFinderModule implements LatestImageFinderModule {
       final fileName = result['fileName'] as String?;
       final sizeBytes = result['sizeBytes'] as int?;
 
-      debugPrint('[Gifticon][LatestImage] path=$path');
-      debugPrint('[Gifticon][LatestImage] fileName=$fileName');
-      debugPrint('[Gifticon][LatestImage] sizeBytes=$sizeBytes');
+      await AppLogger.log(
+        tag: 'LatestImage',
+        event: 'parsed_result',
+        data: {
+          'path': path,
+          'fileName': fileName,
+          'sizeBytes': sizeBytes,
+        },
+      );
 
       if (path == null || path.isEmpty) {
-        debugPrint('[Gifticon][LatestImage] path is null or empty');
+        await AppLogger.log(
+          tag: 'LatestImage',
+          event: 'path_empty',
+        );
         return null;
       }
 
@@ -48,10 +70,21 @@ class AndroidLatestImageFinderModule implements LatestImageFinderModule {
         sizeBytes: sizeBytes,
       );
     } on PlatformException catch (e) {
-      debugPrint('[Gifticon][LatestImage][PlatformException] ${e.code}: ${e.message}');
+      await AppLogger.log(
+        tag: 'LatestImage',
+        event: 'platform_exception',
+        data: {
+          'code': e.code,
+          'message': e.message,
+        },
+      );
       return null;
     } catch (e) {
-      debugPrint('[Gifticon][LatestImage][Error] $e');
+      await AppLogger.log(
+        tag: 'LatestImage',
+        event: 'error',
+        data: {'error': '$e'},
+      );
       return null;
     }
   }

@@ -11,6 +11,7 @@ import '../services/gifticon_services.dart';
 import '../services/gifticon_storage_service.dart';
 import '../services/now_provider.dart';
 import '../services/screenshot_automation_service.dart';
+import '../services/app_logger.dart';
 import 'ScreenshotAutoDetectSettingsPage.dart';
 import 'gifticon_analysis_page.dart';
 import 'gifticon_detail_page.dart';
@@ -194,31 +195,47 @@ class _GifticonListPageState extends State<GifticonListPage>
   Future<void> _handleResumedRefresh() async {
     if (!_isInitialized) return;
 
-    debugPrint(
-      '[Gifticon][ListPage][Lifecycle] resumed -> reopen & reload start',
+    await AppLogger.log(
+      tag: 'ListPage',
+      event: 'lifecycle_resumed_reload_start',
     );
 
     await _itemsSubscription?.cancel();
-    debugPrint('[Gifticon][ListPage][Lifecycle] items subscription cancelled');
+    await AppLogger.log(
+      tag: 'ListPage',
+      event: 'items_subscription_cancelled',
+    );
 
     await _storageService.reopenBox();
-    debugPrint('[Gifticon][ListPage][Lifecycle] storage box reopened');
+    await AppLogger.log(
+      tag: 'ListPage',
+      event: 'storage_box_reopened',
+    );
 
     _listenToItems();
-    debugPrint('[Gifticon][ListPage][Lifecycle] items subscription restarted');
+    await AppLogger.log(
+      tag: 'ListPage',
+      event: 'items_subscription_restarted',
+    );
 
     await _loadItems();
 
-    debugPrint(
-      '[Gifticon][ListPage][Lifecycle] resumed -> reopen & reload done',
+    await AppLogger.log(
+      tag: 'ListPage',
+      event: 'lifecycle_resumed_reload_done',
     );
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    debugPrint(
-      '[Gifticon][ListPage][Lifecycle] '
-      'from=$_appLifecycleState to=$state initialized=$_isInitialized',
+    AppLogger.log(
+      tag: 'ListPage',
+      event: 'lifecycle_changed',
+      data: {
+        'from': _appLifecycleState.name,
+        'to': state.name,
+        'initialized': _isInitialized,
+      },
     );
 
     _appLifecycleState = state;
@@ -252,8 +269,12 @@ class _GifticonListPageState extends State<GifticonListPage>
   void _listenToItems() {
     _itemsSubscription?.cancel();
     _itemsSubscription = _storageService.watchGifticons().listen((items) {
-      debugPrint(
-        '[Gifticon][ListPage][ItemsStream] received items=${items.length}',
+      AppLogger.log(
+        tag: 'ListPage',
+        event: 'items_stream_received',
+        data: {
+          'items': items.length,
+        },
       );
 
       if (!mounted) return;
@@ -263,8 +284,12 @@ class _GifticonListPageState extends State<GifticonListPage>
         _loading = false;
       });
 
-      debugPrint(
-        '[Gifticon][ListPage][ItemsStream] setState complete items=${_items.length}',
+      AppLogger.log(
+        tag: 'ListPage',
+        event: 'items_stream_setstate_complete',
+        data: {
+          'items': _items.length,
+        },
       );
     });
   }
@@ -364,16 +389,31 @@ class _GifticonListPageState extends State<GifticonListPage>
 
   Future<void> _startListeningScreenshotEvents() async {
     if (_isListeningActive) {
-      debugPrint('[Gifticon][List] screenshot listener already active');
+      await AppLogger.log(
+        tag: 'List',
+        event: 'listener_already_active',
+      );
       return;
     }
 
-    debugPrint('[Gifticon][List] requesting media permission...');
+    await AppLogger.log(
+      tag: 'List',
+      event: 'request_media_permission',
+    );
     final granted = await _ensureMediaPermission();
-    debugPrint('[Gifticon][List] media permission granted=$granted');
+    await AppLogger.log(
+      tag: 'List',
+      event: 'media_permission_result',
+      data: {
+        'granted': granted,
+      },
+    );
 
     if (!granted) {
-      debugPrint('[Gifticon][List] media permission denied');
+      await AppLogger.log(
+        tag: 'List',
+        event: 'media_permission_denied',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -381,14 +421,22 @@ class _GifticonListPageState extends State<GifticonListPage>
       return;
     }
 
-    debugPrint('[Gifticon][List] start screenshot event subscription');
+    await AppLogger.log(
+      tag: 'List',
+      event: 'start_screenshot_subscription',
+    );
 
     _screenshotSubscription = _screenshotEventListener.events.listen(
       (event) async {
-        debugPrint(
-          '[Gifticon][ListPage][ScreenshotEvent] '
-          'event=$event enabled=$_isListeningEnabled processing=$_isProcessingScreenshot '
-          'lifecycle=$_appLifecycleState',
+        await AppLogger.log(
+          tag: 'ListPage',
+          event: 'screenshot_event_received',
+          data: {
+            'event': '$event',
+            'enabled': _isListeningEnabled,
+            'processing': _isProcessingScreenshot,
+            'lifecycle': _appLifecycleState.name,
+          },
         );
 
         if (!_isListeningEnabled || _isProcessingScreenshot) return;
@@ -401,19 +449,33 @@ class _GifticonListPageState extends State<GifticonListPage>
               _appLifecycleState == AppLifecycleState.detached ||
               _appLifecycleState == AppLifecycleState.hidden;
 
-          debugPrint(
-            '[Gifticon][ListPage][ScreenshotEvent] handle start isBackground=$isBackground',
+          await AppLogger.log(
+            tag: 'ListPage',
+            event: 'screenshot_handle_start',
+            data: {
+              'isBackground': isBackground,
+            },
           );
 
           final output = await _automationService.handleScreenshotDetected(
             isBackground: isBackground,
           );
 
-          debugPrint(
-            '[Gifticon][ListPage][ScreenshotEvent] handle done output=$output',
+          await AppLogger.log(
+            tag: 'ListPage',
+            event: 'screenshot_handle_done',
+            data: {
+              'output': '$output',
+            },
           );
 
-          debugPrint('[Gifticon][List] automation output=$output');
+          await AppLogger.log(
+            tag: 'List',
+            event: 'automation_output',
+            data: {
+              'output': '$output',
+            },
+          );
 
           if (output == null) return;
           if (!output.isGifticon) return;
@@ -426,7 +488,13 @@ class _GifticonListPageState extends State<GifticonListPage>
             );
           }
         } catch (e) {
-          debugPrint('[Gifticon][List][Error] $e');
+          await AppLogger.log(
+            tag: 'List',
+            event: 'screenshot_error',
+            data: {
+              'error': '$e',
+            },
+          );
           if (!mounted) return;
           ScaffoldMessenger.of(
             context,
@@ -436,7 +504,13 @@ class _GifticonListPageState extends State<GifticonListPage>
         }
       },
       onError: (error) {
-        debugPrint('[Gifticon][List][StreamError] $error');
+        AppLogger.log(
+          tag: 'List',
+          event: 'stream_error',
+          data: {
+            'error': '$error',
+          },
+        );
         if (!mounted) return;
         ScaffoldMessenger.of(
           context,
@@ -449,7 +523,10 @@ class _GifticonListPageState extends State<GifticonListPage>
       _isListeningActive = true;
     });
 
-    debugPrint('[Gifticon][List] screenshot listener active');
+    await AppLogger.log(
+      tag: 'List',
+      event: 'listener_active',
+    );
   }
 
   Future<void> _stopListeningScreenshotEvents() async {
@@ -483,7 +560,13 @@ class _GifticonListPageState extends State<GifticonListPage>
 
   Future<void> _loadItems() async {
     final items = _storageService.getAllGifticons();
-    debugPrint('[Gifticon][ListPage][LoadItems] fetched items=${items.length}');
+    await AppLogger.log(
+      tag: 'ListPage',
+      event: 'load_items_fetched',
+      data: {
+        'items': items.length,
+      },
+    );
 
     if (!mounted) return;
 
@@ -492,8 +575,12 @@ class _GifticonListPageState extends State<GifticonListPage>
       _loading = false;
     });
 
-    debugPrint(
-      '[Gifticon][ListPage][LoadItems] setState complete items=${_items.length}',
+    await AppLogger.log(
+      tag: 'ListPage',
+      event: 'load_items_setstate_complete',
+      data: {
+        'items': _items.length,
+      },
     );
   }
 

@@ -6,6 +6,7 @@ import '../modules/gifticon_detector_module.dart';
 import '../modules/image_picker_module.dart';
 import '../modules/ocr_module.dart';
 import '../modules/remote_gifticon_ai_parser.dart';
+import 'app_logger.dart';
 import 'device_id_service.dart';
 import 'fcm_service.dart';
 import 'gifticon_notification_service.dart';
@@ -42,12 +43,25 @@ class GifticonServices {
   static Future<GifticonServices> create({
     NowProvider? nowProvider,
   }) async {
+    await AppLogger.log(
+      tag: 'Services',
+      event: 'create_start',
+    );
+
     final resolvedNowProvider = nowProvider ?? SystemNowProvider();
 
     final storageService = GifticonStorageService(
       nowProvider: resolvedNowProvider,
     );
     await storageService.init();
+
+    await AppLogger.log(
+      tag: 'Services',
+      event: 'storage_initialized',
+      data: {
+        'gifticonCount': storageService.getAllGifticons().length,
+      },
+    );
 
     final deviceIdService = DeviceIdService(baseUrl: _baseUrl);
 
@@ -65,10 +79,23 @@ class GifticonServices {
     );
     await notificationService.init();
 
+    await AppLogger.log(
+      tag: 'Services',
+      event: 'notification_initialized',
+    );
+
     final workService = GifticonWorkService();
 
     await notificationService.rescheduleAllExpiryNotifications(
       storageService.getAllGifticons(),
+    );
+
+    await AppLogger.log(
+      tag: 'Services',
+      event: 'expiry_rescheduled',
+      data: {
+        'gifticonCount': storageService.getAllGifticons().length,
+      },
     );
 
     await _reschedulePendingAutoShareWorks(
@@ -82,6 +109,11 @@ class GifticonServices {
       ocrModule: GifticonOcrModule(),
       barcodeModule: GifticonBarcodeModule(),
       detector: GifticonDetectorModule(),
+    );
+
+    await AppLogger.log(
+      tag: 'Services',
+      event: 'pipeline_initialized',
     );
 
     final aiParser = RemoteGifticonAiParser(
@@ -103,7 +135,21 @@ class GifticonServices {
     );
 
     await deviceIdService.registerDevice();
+    await AppLogger.log(
+      tag: 'Services',
+      event: 'device_registered',
+    );
+
     await fcmService.init();
+    await AppLogger.log(
+      tag: 'Services',
+      event: 'fcm_initialized',
+    );
+
+    await AppLogger.log(
+      tag: 'Services',
+      event: 'create_done',
+    );
 
     return GifticonServices(
       storageService: storageService,
@@ -124,8 +170,27 @@ class GifticonServices {
   }) async {
     final now = nowProvider.now();
 
+    await AppLogger.log(
+      tag: 'Services',
+      event: 'auto_share_reschedule_start',
+      data: {
+        'now': now.toIso8601String(),
+        'gifticonCount': storageService.getAllGifticons().length,
+      },
+    );
+
     for (final stored in storageService.getAllGifticons()) {
       if (stored.isShared || stored.isUsed || stored.expiresAt == null) {
+        await AppLogger.log(
+          tag: 'Services',
+          event: 'auto_share_reschedule_skip',
+          data: {
+            'gifticonId': stored.id,
+            'isShared': stored.isShared,
+            'isUsed': stored.isUsed,
+            'hasExpiresAt': stored.expiresAt != null,
+          },
+        );
         continue;
       }
 
@@ -139,13 +204,40 @@ class GifticonServices {
       );
 
       if (!autoShareAt.isAfter(now)) {
+        await AppLogger.log(
+          tag: 'Services',
+          event: 'auto_share_reschedule_skip_past',
+          data: {
+            'gifticonId': stored.id,
+            'autoShareAt': autoShareAt.toIso8601String(),
+            'now': now.toIso8601String(),
+          },
+        );
         continue;
       }
 
+      final delay = autoShareAt.difference(now);
+
+      await AppLogger.log(
+        tag: 'Services',
+        event: 'auto_share_reschedule_schedule',
+        data: {
+          'gifticonId': stored.id,
+          'expiresAt': stored.expiresAt!.toIso8601String(),
+          'autoShareAt': autoShareAt.toIso8601String(),
+          'delay': delay.toString(),
+        },
+      );
+
       await workService.scheduleAutoShareWork(
         gifticonId: stored.id,
-        initialDelay: autoShareAt.difference(now),
+        initialDelay: delay,
       );
     }
+
+    await AppLogger.log(
+      tag: 'Services',
+      event: 'auto_share_reschedule_done',
+    );
   }
 }

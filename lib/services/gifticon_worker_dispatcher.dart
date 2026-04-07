@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:workmanager/workmanager.dart';
 
 import '../modules/remote_gifticon_ai_parser.dart';
+import 'app_logger.dart';
 import 'device_id_service.dart';
 import 'gifticon_notification_service.dart';
 import 'gifticon_sharing_service.dart';
@@ -28,7 +29,13 @@ void callbackDispatcher() {
     DartPluginRegistrant.ensureInitialized();
     await Hive.initFlutter();
 
-    debugPrint('[Gifticon][Worker] task=$task started');
+    await AppLogger.log(
+      tag: 'Worker',
+      event: 'task_started',
+      data: {
+        'task': task,
+      },
+    );
 
     final notificationService = GifticonNotificationService(
       FlutterLocalNotificationsPlugin(),
@@ -43,7 +50,14 @@ void callbackDispatcher() {
             rawText.isEmpty ||
             imagePath == null ||
             imagePath.isEmpty) {
-          debugPrint('[Gifticon][Worker] invalid parse input data');
+          await AppLogger.log(
+            tag: 'Worker',
+            event: 'invalid_parse_input_data',
+            data: {
+              'hasRawText': rawText != null && rawText.isNotEmpty,
+              'hasImagePath': imagePath != null && imagePath.isNotEmpty,
+            },
+          );
           return false;
         }
 
@@ -57,40 +71,81 @@ void callbackDispatcher() {
           baseUrl: kGifticonBaseUrl,
         );
 
-        debugPrint('[Gifticon][Worker] show processing notification');
+        await AppLogger.log(
+          tag: 'Worker',
+          event: 'show_processing_notification',
+        );
         await notificationService.showProcessingNotification();
 
-        debugPrint('[Gifticon][Worker] start remote parse');
+        await AppLogger.log(
+          tag: 'Worker',
+          event: 'remote_parse_start',
+          data: {
+            'rawTextLength': rawText.length,
+            'imagePath': imagePath,
+          },
+        );
+
         final sw = Stopwatch()..start();
         final info = await parser.parse(rawText: rawText);
-        debugPrint('[Gifticon][Worker] parse took ${sw.elapsedMilliseconds}ms');
 
-        debugPrint('[Gifticon][Worker] save parsed gifticon');
+        await AppLogger.log(
+          tag: 'Worker',
+          event: 'remote_parse_done',
+          data: {
+            'elapsedMs': sw.elapsedMilliseconds,
+            'merchantName': info.merchantName,
+            'itemName': info.itemName,
+            'couponNumber': info.couponNumber,
+            'expiresAt': info.expiresAt?.toIso8601String(),
+          },
+        );
+
+        await AppLogger.log(
+          tag: 'Worker',
+          event: 'save_parsed_gifticon_start',
+        );
         final result = await storageService.saveGifticon(
           sourceImagePath: imagePath,
           info: info,
         );
 
         if (result.isDuplicate) {
-          debugPrint(
-            '[Gifticon][Worker] duplicate — skip notification schedule. existing id=${result.gifticon.id}',
+          await AppLogger.log(
+            tag: 'Worker',
+            event: 'duplicate_skip_notification_schedule',
+            data: {
+              'existingId': result.gifticon.id,
+            },
           );
           await notificationService.cancelProcessingNotification();
-          debugPrint(
-            '[Gifticon][Worker] processing notification cancelled (duplicate)',
+          await AppLogger.log(
+            tag: 'Worker',
+            event: 'processing_notification_cancelled_duplicate',
           );
           return true;
         }
 
         final stored = result.gifticon;
 
-        debugPrint('[Gifticon][Worker] schedule expiry notifications');
+        await AppLogger.log(
+          tag: 'Worker',
+          event: 'schedule_expiry_notifications_start',
+          data: {
+            'gifticonId': stored.id,
+          },
+        );
+
         final scheduled =
         await notificationService.scheduleExpiryNotifications(stored);
 
         if (!scheduled) {
-          debugPrint(
-            '[Gifticon][Worker] expiry notifications were deferred until foreground app resumes',
+          await AppLogger.log(
+            tag: 'Worker',
+            event: 'expiry_notifications_deferred_until_foreground',
+            data: {
+              'gifticonId': stored.id,
+            },
           );
         }
 
@@ -110,8 +165,15 @@ void callbackDispatcher() {
           if (autoShareAt.isAfter(now)) {
             final delay = autoShareAt.difference(now);
 
-            debugPrint(
-              '[Gifticon][Worker] schedule auto share at=$autoShareAt delay=$delay',
+            await AppLogger.log(
+              tag: 'Worker',
+              event: 'schedule_auto_share',
+              data: {
+                'gifticonId': stored.id,
+                'autoShareAt': autoShareAt.toIso8601String(),
+                'now': now.toIso8601String(),
+                'delay': delay.toString(),
+              },
             );
 
             await workService.scheduleAutoShareWork(
@@ -119,22 +181,42 @@ void callbackDispatcher() {
               initialDelay: delay,
             );
           } else {
-            debugPrint(
-              '[Gifticon][Worker] auto share time already passed, skip scheduling: at=$autoShareAt',
+            await AppLogger.log(
+              tag: 'Worker',
+              event: 'auto_share_time_passed_skip',
+              data: {
+                'gifticonId': stored.id,
+                'autoShareAt': autoShareAt.toIso8601String(),
+                'now': now.toIso8601String(),
+              },
             );
           }
         }
 
-        debugPrint('[Gifticon][Worker] show saved notification');
+        await AppLogger.log(
+          tag: 'Worker',
+          event: 'show_saved_notification',
+          data: {
+            'gifticonId': stored.id,
+          },
+        );
         await notificationService.showSavedNotificationFromStored(stored);
 
-        // 메인 isolate에 갱신 신호 전달
         await GifticonStorageService.markPendingRefresh();
 
         await notificationService.cancelProcessingNotification();
-        debugPrint('[Gifticon][Worker] processing notification cancelled');
+        await AppLogger.log(
+          tag: 'Worker',
+          event: 'processing_notification_cancelled_success',
+        );
 
-        debugPrint('[Gifticon][Worker] parse task success');
+        await AppLogger.log(
+          tag: 'Worker',
+          event: 'parse_task_success',
+          data: {
+            'gifticonId': stored.id,
+          },
+        );
         return true;
       }
 
@@ -142,7 +224,10 @@ void callbackDispatcher() {
         final gifticonId = inputData?[kInputGifticonId] as String?;
 
         if (gifticonId == null || gifticonId.isEmpty) {
-          debugPrint('[Gifticon][Worker] invalid auto share input data');
+          await AppLogger.log(
+            tag: 'Worker',
+            event: 'invalid_auto_share_input_data',
+          );
           return false;
         }
 
@@ -152,29 +237,45 @@ void callbackDispatcher() {
 
         final stored = storageService.getGifticonById(gifticonId);
         if (stored == null) {
-          debugPrint(
-            '[Gifticon][Worker] auto share target not found: id=$gifticonId',
+          await AppLogger.log(
+            tag: 'Worker',
+            event: 'auto_share_target_not_found',
+            data: {
+              'gifticonId': gifticonId,
+            },
           );
           return true;
         }
 
         if (stored.isShared) {
-          debugPrint(
-            '[Gifticon][Worker] already shared — skip auto share: id=$gifticonId',
+          await AppLogger.log(
+            tag: 'Worker',
+            event: 'auto_share_skip_already_shared',
+            data: {
+              'gifticonId': gifticonId,
+            },
           );
           return true;
         }
 
         if (stored.isUsed) {
-          debugPrint(
-            '[Gifticon][Worker] already used — skip auto share: id=$gifticonId',
+          await AppLogger.log(
+            tag: 'Worker',
+            event: 'auto_share_skip_already_used',
+            data: {
+              'gifticonId': gifticonId,
+            },
           );
           return true;
         }
 
         if (stored.expiresAt == null) {
-          debugPrint(
-            '[Gifticon][Worker] expiresAt is null — skip auto share: id=$gifticonId',
+          await AppLogger.log(
+            tag: 'Worker',
+            event: 'auto_share_skip_expires_at_null',
+            data: {
+              'gifticonId': gifticonId,
+            },
           );
           return true;
         }
@@ -189,33 +290,71 @@ void callbackDispatcher() {
           deviceIdService: deviceIdService,
         );
 
-        debugPrint('[Gifticon][Worker] auto share upload start: id=$gifticonId');
+        await AppLogger.log(
+          tag: 'Worker',
+          event: 'auto_share_upload_start',
+          data: {
+            'gifticonId': gifticonId,
+          },
+        );
         await sharingService.uploadForSharing(stored);
-        debugPrint('[Gifticon][Worker] auto share upload done: id=$gifticonId');
+        await AppLogger.log(
+          tag: 'Worker',
+          event: 'auto_share_upload_done',
+          data: {
+            'gifticonId': gifticonId,
+          },
+        );
 
         final updated = storageService.getGifticonById(gifticonId);
         if (updated != null && updated.isShared) {
-          debugPrint('[Gifticon][Worker] show shared notification: id=$gifticonId');
+          await AppLogger.log(
+            tag: 'Worker',
+            event: 'show_shared_notification',
+            data: {
+              'gifticonId': gifticonId,
+            },
+          );
           await notificationService.showSharedNotificationFromStored(updated);
         }
 
         return true;
       }
 
-      debugPrint('[Gifticon][Worker] unknown task ignored');
+      await AppLogger.log(
+        tag: 'Worker',
+        event: 'unknown_task_ignored',
+        data: {
+          'task': task,
+        },
+      );
       return true;
     } catch (e, st) {
-      debugPrint('[Gifticon][Worker][Error] $e');
-      debugPrintStack(stackTrace: st);
+      await AppLogger.log(
+        tag: 'Worker',
+        event: 'error',
+        data: {
+          'task': task,
+          'error': '$e',
+          'stack': '$st',
+        },
+      );
 
       try {
         await notificationService.cancelProcessingNotification();
-        debugPrint(
-          '[Gifticon][Worker] processing notification cancelled (on error)',
+        await AppLogger.log(
+          tag: 'Worker',
+          event: 'processing_notification_cancelled_on_error',
         );
       } catch (cancelError, cancelSt) {
-        debugPrint('[Gifticon][Worker][CancelNotificationError] $cancelError');
-        debugPrintStack(stackTrace: cancelSt);
+        await AppLogger.log(
+          tag: 'Worker',
+          event: 'cancel_notification_error',
+          data: {
+            'error': '$cancelError',
+            'stack': '$cancelSt',
+          },
+        );
       }
 
       return false;

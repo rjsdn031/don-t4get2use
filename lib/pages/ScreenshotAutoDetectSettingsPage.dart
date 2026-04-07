@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../services/app_logger.dart';
+
 class ScreenshotAutoDetectSettingsPage extends StatefulWidget {
   const ScreenshotAutoDetectSettingsPage({
     super.key,
@@ -19,6 +21,7 @@ class ScreenshotAutoDetectSettingsPage extends StatefulWidget {
 class _ScreenshotAutoDetectSettingsPageState
     extends State<ScreenshotAutoDetectSettingsPage> {
   late bool _isEnabled;
+  bool _isExportingLogs = false;
   bool _isUpdating = false;
 
   static const Color _textPrimary = Color(0xFF1A1A1A);
@@ -60,6 +63,33 @@ class _ScreenshotAutoDetectSettingsPageState
         ),
       ),
     );
+  }
+
+  Future<void> _handleExportLogs() async {
+    if (_isExportingLogs) return;
+
+    setState(() {
+      _isExportingLogs = true;
+    });
+
+    try {
+      await AppLogger.exportLogs();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('로그 파일을 내보냈어요.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('로그 내보내기에 실패했어요.\n$e')),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isExportingLogs = false;
+      });
+    }
   }
 
   @override
@@ -148,6 +178,29 @@ class _ScreenshotAutoDetectSettingsPageState
               ),
               _buildGuideItem(
                 '원하지 않을 경우 언제든지 이 설정에서 기능을 끌 수 있어요.',
+              ),
+
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _isExportingLogs ? null : _handleExportLogs,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    side: const BorderSide(color: _accent),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: Text(
+                    _isExportingLogs ? '로그 내보내는 중...' : '로그 내보내기',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: _accent,
+                    ),
+                  ),
+                ),
               ),
             ],
           ),

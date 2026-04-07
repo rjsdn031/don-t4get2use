@@ -1,8 +1,10 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
+
+import 'package:flutter/cupertino.dart';
 
 import '../modules/latest_image_finder_module.dart';
 import '../modules/remote_gifticon_ai_parser.dart';
+import 'app_logger.dart';
 import 'gifticon_notification_service.dart';
 import 'gifticon_pipeline_service.dart';
 import 'gifticon_storage_service.dart';
@@ -48,8 +50,13 @@ class ScreenshotAutomationService {
           if (length > 0 && length == lastLength) {
             stableCount += 1;
             if (stableCount >= 2) {
-              debugPrint(
-                '[Gifticon][Automation] file ready: path=$path length=$length',
+              await AppLogger.log(
+                tag: 'Automation',
+                event: 'file_ready',
+                data: {
+                  'path': path,
+                  'length': length,
+                },
               );
               return true;
             }
@@ -63,27 +70,55 @@ class ScreenshotAutomationService {
                 'path=$path length=$length stableCount=$stableCount',
           );
         } else {
-          debugPrint('[Gifticon][Automation] file not found yet: $path');
+          await AppLogger.log(
+            tag: 'Automation',
+            event: 'file_not_found_yet',
+            data: {
+              'path': path,
+            },
+          );
         }
       } catch (e) {
-        debugPrint('[Gifticon][Automation] file check error: $e');
+        await AppLogger.log(
+          tag: 'Automation',
+          event: 'file_check_error',
+          data: {
+            'path': path,
+            'error': '$e',
+          },
+        );
       }
 
       await Future<void>.delayed(interval);
     }
 
-    debugPrint('[Gifticon][Automation] file not ready within timeout: $path');
+    await AppLogger.log(
+      tag: 'Automation',
+      event: 'file_not_ready_timeout',
+      data: {
+        'path': path,
+        'timeoutMs': timeout.inMilliseconds,
+      },
+    );
     return false;
   }
 
   Future<GifticonPipelineOutput?> handleScreenshotDetected({
     bool isBackground = false,
   }) async {
-    debugPrint('[Gifticon][Automation] screenshot event received');
-    debugPrint('[Gifticon][Automation] isBackground=$isBackground');
+    await AppLogger.log(
+      tag: 'Automation',
+      event: 'screenshot_event_received',
+      data: {
+        'isBackground': isBackground,
+      },
+    );
 
     if (_isProcessing) {
-      debugPrint('[Gifticon][Automation] already processing, ignored');
+      await AppLogger.log(
+        tag: 'Automation',
+        event: 'already_processing_skip',
+      );
       return null;
     }
 
@@ -91,7 +126,14 @@ class ScreenshotAutomationService {
 
     if (_lastHandledAt != null &&
         now.difference(_lastHandledAt!) < const Duration(milliseconds: 1200)) {
-      debugPrint('[Gifticon][Automation] debounce ignored');
+      await AppLogger.log(
+        tag: 'Automation',
+        event: 'debounce_skip',
+        data: {
+          'lastHandledAt': _lastHandledAt!.toIso8601String(),
+          'now': now.toIso8601String(),
+        },
+      );
       return null;
     }
 
@@ -101,54 +143,123 @@ class ScreenshotAutomationService {
     try {
       final latestImage = await latestImageFinder.findLatestImage();
       if (latestImage == null) {
-        debugPrint('[Gifticon][Automation] latest image not found');
+        await AppLogger.log(
+          tag: 'Automation',
+          event: 'latest_image_not_found',
+        );
         return null;
       }
 
+      await AppLogger.log(
+        tag: 'Automation',
+        event: 'latest_image_found',
+        data: {
+          'path': latestImage.path,
+          'fileName': latestImage.fileName,
+          'sizeBytes': latestImage.sizeBytes,
+        },
+      );
+
       if (_lastProcessedPath == latestImage.path) {
-        debugPrint('[Gifticon][Automation] duplicate image ignored');
+        await AppLogger.log(
+          tag: 'Automation',
+          event: 'duplicate_image_skip',
+          data: {
+            'path': latestImage.path,
+          },
+        );
         return null;
       }
 
       final ready = await _waitUntilFileReady(latestImage.path);
       if (!ready) {
-        debugPrint(
-          '[Gifticon][Automation] latest image not ready, skip: ${latestImage.path}',
+        await AppLogger.log(
+          tag: 'Automation',
+          event: 'latest_image_not_ready_skip',
+          data: {
+            'path': latestImage.path,
+          },
         );
         return null;
       }
 
       final sw = Stopwatch()..start();
       final output = await pipeline.runFromImage(latestImage);
-      debugPrint('[Gifticon][Automation] pipeline took ${sw.elapsedMilliseconds}ms');
+
+      await AppLogger.log(
+        tag: 'Automation',
+        event: 'pipeline_done',
+        data: {
+          'elapsedMs': sw.elapsedMilliseconds,
+          'path': latestImage.path,
+          'isGifticon': output.isGifticon,
+          'rawTextLength': output.ocr.rawText.length,
+        },
+      );
+
       _lastProcessedPath = latestImage.path;
 
       if (!output.isGifticon) {
+        await AppLogger.log(
+          tag: 'Automation',
+          event: 'non_gifticon_skip',
+          data: {
+            'path': latestImage.path,
+          },
+        );
         return output;
       }
 
-      debugPrint('[Gifticon][Automation] enqueue parse work');
+      await AppLogger.log(
+        tag: 'Automation',
+        event: 'enqueue_parse_work',
+        data: {
+          'imagePath': output.image.path,
+          'rawTextLength': output.ocr.rawText.length,
+        },
+      );
+
       await workService.enqueueParseWork(
         rawText: output.ocr.rawText,
         imagePath: output.image.path,
       );
 
       if (!isBackground) {
+        await AppLogger.log(
+          tag: 'Automation',
+          event: 'show_processing_notification',
+        );
         await notificationService.showProcessingNotification();
       }
 
       return output;
     } catch (e, st) {
-      debugPrint('[Gifticon][Automation][Error] $e');
-      debugPrintStack(stackTrace: st);
+      await AppLogger.log(
+        tag: 'Automation',
+        event: 'error',
+        data: {
+          'error': '$e',
+          'stack': '$st',
+        },
+      );
       rethrow;
     } finally {
       _isProcessing = false;
+
+      await AppLogger.log(
+        tag: 'Automation',
+        event: 'processing_finished',
+      );
     }
   }
 
   void resetLastProcessed() {
     _lastProcessedPath = null;
     _lastHandledAt = null;
+
+    AppLogger.log(
+      tag: 'Automation',
+      event: 'reset_last_processed',
+    );
   }
 }

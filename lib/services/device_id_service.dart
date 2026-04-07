@@ -3,6 +3,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'app_logger.dart';
 
 class DeviceIdService {
   static const String _deviceIdKey = 'device_id';
@@ -29,7 +30,13 @@ class DeviceIdService {
 
     final newId = const Uuid().v4();
     await prefs.setString(_deviceIdKey, newId);
-    debugPrint('[DeviceId] new device id generated: $newId');
+    await AppLogger.log(
+      tag: 'DeviceId',
+      event: 'new_device_id_generated',
+      data: {
+        'deviceId': newId,
+      },
+    );
     return newId;
   }
 
@@ -53,7 +60,10 @@ class DeviceIdService {
       final token = await _getFcmToken();
 
       if (token == null) {
-        debugPrint('[DeviceId] FCM token unavailable — skip registration');
+        await AppLogger.log(
+          tag: 'DeviceId',
+          event: 'fcm_unavailable_skip_registration',
+        );
         return;
       }
 
@@ -64,8 +74,9 @@ class DeviceIdService {
       if (cachedToken == token &&
           cachedNickname != null &&
           cachedNickname.isNotEmpty) {
-        debugPrint(
-          '[DeviceId] FCM token unchanged and nickname cached — skip registration',
+        await AppLogger.log(
+          tag: 'DeviceId',
+          event: 'skip_registration_cached',
         );
         return;
       }
@@ -77,7 +88,13 @@ class DeviceIdService {
           'fcmToken': token,
         },
       );
-      debugPrint('[DeviceId] register response: ${response.data}');
+      await AppLogger.log(
+        tag: 'DeviceId',
+        event: 'register_response',
+        data: {
+          'response': '${response.data}',
+        },
+      );
 
       final data = response.data ?? <String, dynamic>{};
       final nickname = data['nickname'] as String?;
@@ -86,17 +103,38 @@ class DeviceIdService {
 
       if (nickname != null && nickname.isNotEmpty) {
         await prefs.setString(_nicknameKey, nickname);
-        debugPrint('[DeviceId] nickname saved: $nickname');
+        await AppLogger.log(
+          tag: 'DeviceId',
+          event: 'nickname_saved',
+          data: {
+            'nickname': nickname,
+          },
+        );
       } else {
-        debugPrint(
-          '[DeviceId] nickname missing in register response'
-              ' — keep cached nickname: $cachedNickname',
+        await AppLogger.log(
+          tag: 'DeviceId',
+          event: 'nickname_missing_keep_cached',
+          data: {
+            'cachedNickname': cachedNickname,
+          },
         );
       }
 
-      debugPrint('[DeviceId] device registered: deviceId=$deviceId');
+      await AppLogger.log(
+        tag: 'DeviceId',
+        event: 'device_registered',
+        data: {
+          'deviceId': deviceId,
+        },
+      );
     } catch (e) {
-      debugPrint('[DeviceId] registration failed: $e');
+      await AppLogger.log(
+        tag: 'DeviceId',
+        event: 'registration_failed',
+        data: {
+          'error': '$e',
+        },
+      );
     }
   }
 
@@ -106,7 +144,10 @@ class DeviceIdService {
       final settings = await messaging.requestPermission();
 
       if (settings.authorizationStatus == AuthorizationStatus.denied) {
-        debugPrint('[DeviceId] notification permission denied');
+        await AppLogger.log(
+          tag: 'DeviceId',
+          event: 'notification_permission_denied',
+        );
         return null;
       }
 
@@ -116,10 +157,22 @@ class DeviceIdService {
           : token.length <= 10
           ? token
           : '${token.substring(0, 10)}...';
-      debugPrint('[DeviceId] FCM token: $preview');
+      await AppLogger.log(
+        tag: 'DeviceId',
+        event: 'fcm_token_fetched',
+        data: {
+          'preview': preview,
+        },
+      );
       return token;
     } catch (e) {
-      debugPrint('[DeviceId] FCM token fetch failed: $e');
+      await AppLogger.log(
+        tag: 'DeviceId',
+        event: 'fcm_token_fetch_failed',
+        data: {
+          'error': '$e',
+        },
+      );
       return null;
     }
   }

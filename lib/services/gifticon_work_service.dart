@@ -1,6 +1,6 @@
-import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
 
+import 'app_logger.dart';
 import 'gifticon_worker_dispatcher.dart';
 
 class GifticonWorkService {
@@ -8,8 +8,20 @@ class GifticonWorkService {
     required String rawText,
     required String imagePath,
   }) async {
+    final taskName = 'gifticon-parse-${DateTime.now().millisecondsSinceEpoch}';
+
+    await AppLogger.log(
+      tag: 'Work',
+      event: 'enqueue_parse_work',
+      data: {
+        'taskName': taskName,
+        'rawTextLength': rawText.length,
+        'imagePath': imagePath,
+      },
+    );
+
     await Workmanager().registerOneOffTask(
-      'gifticon-parse-${DateTime.now().millisecondsSinceEpoch}',
+      taskName,
       kGifticonParseTask,
       inputData: {
         kInputRawText: rawText,
@@ -28,8 +40,14 @@ class GifticonWorkService {
   }) async {
     final uniqueName = 'gifticon-auto-share-$gifticonId';
 
-    debugPrint(
-      '[Gifticon][Work] scheduleAutoShareWork id=$gifticonId delay=$initialDelay',
+    await AppLogger.log(
+      tag: 'Work',
+      event: 'schedule_auto_share_work',
+      data: {
+        'id': gifticonId,
+        'delay': initialDelay.toString(),
+        'uniqueName': uniqueName,
+      },
     );
 
     await Workmanager().registerOneOffTask(
@@ -49,7 +67,14 @@ class GifticonWorkService {
   Future<void> cancelAutoShareWork(String gifticonId) async {
     final uniqueName = 'gifticon-auto-share-$gifticonId';
 
-    debugPrint('[Gifticon][Work] cancelAutoShareWork id=$gifticonId');
+    await AppLogger.log(
+      tag: 'Work',
+      event: 'cancel_auto_share_work',
+      data: {
+        'id': gifticonId,
+        'uniqueName': uniqueName,
+      },
+    );
 
     await Workmanager().cancelByUniqueName(uniqueName);
   }

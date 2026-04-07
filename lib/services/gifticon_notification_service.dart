@@ -1,9 +1,9 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../models/stored_gifticon.dart';
+import 'app_logger.dart';
 import 'exact_alarm_permission_service.dart';
 import 'now_provider.dart';
 
@@ -22,8 +22,6 @@ class GifticonNotificationService {
   final ExactAlarmPermissionService _exactAlarmPermissionService;
   final NowProvider _nowProvider;
 
-  /// WorkManager가 기프티콘을 저장 완료했을 때 알림을 수신하면 호출됨
-  /// List page에서 _loadItems()를 연결해서 리스트 자동 갱신에 사용
   final void Function()? _onGifticonSaved;
 
   static const String _pipelineChannelId = 'gifticon_pipeline';
@@ -95,6 +93,14 @@ class GifticonNotificationService {
     await android?.createNotificationChannel(pipelineChannel);
     await android?.createNotificationChannel(savedChannel);
     await android?.createNotificationChannel(expiryChannel);
+
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'initialized',
+      data: {
+        'timezone': 'Asia/Seoul',
+      },
+    );
   }
 
   Future<bool> canScheduleExactAlarms() {
@@ -110,6 +116,15 @@ class GifticonNotificationService {
         AndroidFlutterLocalNotificationsPlugin>();
 
     final granted = await android?.requestNotificationsPermission();
+
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'request_permission',
+      data: {
+        'granted': granted ?? false,
+      },
+    );
+
     return granted ?? false;
   }
 
@@ -118,6 +133,15 @@ class GifticonNotificationService {
         AndroidFlutterLocalNotificationsPlugin>();
 
     final granted = await android?.areNotificationsEnabled();
+
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'check_permission',
+      data: {
+        'granted': granted ?? false,
+      },
+    );
+
     return granted ?? false;
   }
 
@@ -144,12 +168,30 @@ class GifticonNotificationService {
       body: '기프티콘을 인식하여 저장 중입니다.',
       notificationDetails: details,
     );
+
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'show_processing',
+      data: {
+        'id': _processingNotificationId,
+      },
+    );
   }
 
   Future<void> showSavedNotificationFromStored(StoredGifticon stored) async {
     await _showSavedNotification(
       merchantName: stored.merchantName,
       itemName: stored.itemName,
+    );
+
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'show_saved',
+      data: {
+        'gifticonId': stored.id,
+        'merchantName': stored.merchantName,
+        'itemName': stored.itemName,
+      },
     );
   }
 
@@ -179,29 +221,63 @@ class GifticonNotificationService {
       notificationDetails: details,
       payload: stored.id,
     );
+
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'show_shared',
+      data: {
+        'gifticonId': stored.id,
+        'merchantName': stored.merchantName,
+        'itemName': stored.itemName,
+      },
+    );
   }
 
   Future<void> cancelProcessingNotification() async {
     await _notifications.cancel(id: _processingNotificationId);
+
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'cancel_processing',
+      data: {
+        'id': _processingNotificationId,
+      },
+    );
   }
 
   Future<bool> scheduleExpiryNotifications(StoredGifticon stored) async {
     final expiresAt = stored.expiresAt;
-    if (expiresAt == null) return false;
+    if (expiresAt == null) {
+      await AppLogger.log(
+        tag: 'Notification',
+        event: 'schedule_expiry_skip_no_expiry',
+        data: {
+          'gifticonId': stored.id,
+        },
+      );
+      return false;
+    }
 
     final canSchedule = await canScheduleExactAlarms();
     if (!canSchedule) {
-      debugPrint(
-        '[Gifticon][Notification] skip schedule: exact alarm unavailable or denied (${stored.id})',
+      await AppLogger.log(
+        tag: 'Notification',
+        event: 'schedule_expiry_skip_exact_alarm_unavailable',
+        data: {
+          'gifticonId': stored.id,
+        },
       );
       return false;
     }
 
     await cancelExpiryNotifications(stored.id);
 
+    final threeDaysAt = _at8am(expiresAt.subtract(const Duration(days: 3)));
+    final oneDayAt = _at8am(expiresAt.subtract(const Duration(days: 1)));
+
     await _scheduleExpiryNotification(
       id: _threeDaysBeforeNotificationId(stored.id),
-      scheduledAt: _at8am(expiresAt.subtract(const Duration(days: 3))),
+      scheduledAt: threeDaysAt,
       title: '기프티콘 만료 3일 전',
       body: _buildExpiryBody(
         merchantName: stored.merchantName,
@@ -213,7 +289,7 @@ class GifticonNotificationService {
 
     await _scheduleExpiryNotification(
       id: _oneDayBeforeNotificationId(stored.id),
-      scheduledAt: _at8am(expiresAt.subtract(const Duration(days: 1))),
+      scheduledAt: oneDayAt,
       title: '기프티콘 만료 하루 전',
       body: _buildExpiryBody(
         merchantName: stored.merchantName,
@@ -221,6 +297,17 @@ class GifticonNotificationService {
         suffix: '내일 아침 공유될 예정이에요. 오늘 꼭 사용해 보세요.',
       ),
       payload: stored.id,
+    );
+
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'schedule_expiry_done',
+      data: {
+        'gifticonId': stored.id,
+        'expiresAt': expiresAt.toIso8601String(),
+        'threeDaysAt': threeDaysAt.toIso8601String(),
+        'oneDayAt': oneDayAt.toIso8601String(),
+      },
     );
 
     return true;
@@ -247,11 +334,27 @@ class GifticonNotificationService {
       notificationDetails: details,
       payload: 'debug_now',
     );
+
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'show_debug_now',
+      data: {
+        'id': _debugNowNotificationId,
+      },
+    );
   }
 
   Future<void> cancelExpiryNotifications(String gifticonId) async {
     await _notifications.cancel(id: _threeDaysBeforeNotificationId(gifticonId));
     await _notifications.cancel(id: _oneDayBeforeNotificationId(gifticonId));
+
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'cancel_expiry',
+      data: {
+        'gifticonId': gifticonId,
+      },
+    );
   }
 
   Future<void> rescheduleAllExpiryNotifications(
@@ -259,15 +362,32 @@ class GifticonNotificationService {
       ) async {
     final canSchedule = await canScheduleExactAlarms();
     if (!canSchedule) {
-      debugPrint(
-        '[Gifticon][Notification] skip reschedule: exact alarm unavailable or denied',
+      await AppLogger.log(
+        tag: 'Notification',
+        event: 'reschedule_all_skip_exact_alarm_unavailable',
       );
       return;
     }
 
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'reschedule_all_start',
+      data: {
+        'count': gifticons.length,
+      },
+    );
+
     for (final stored in gifticons) {
       await scheduleExpiryNotifications(stored);
     }
+
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'reschedule_all_done',
+      data: {
+        'count': gifticons.length,
+      },
+    );
   }
 
   Future<bool> scheduleDebugTestNotification({
@@ -279,20 +399,27 @@ class GifticonNotificationService {
     final notificationsEnabled = await android?.areNotificationsEnabled();
     final exactAllowed = await android?.canScheduleExactNotifications();
 
-    debugPrint(
-      '[Gifticon][Notification] notificationsEnabled=$notificationsEnabled, exactAllowed=$exactAllowed',
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'debug_test_check',
+      data: {
+        'notificationsEnabled': notificationsEnabled,
+        'exactAllowed': exactAllowed,
+      },
     );
 
     if (notificationsEnabled != true) {
-      debugPrint(
-        '[Gifticon][Notification] skip debug test schedule: notification permission/channel unavailable',
+      await AppLogger.log(
+        tag: 'Notification',
+        event: 'debug_test_skip_permission',
       );
       return false;
     }
 
     if (exactAllowed != true) {
-      debugPrint(
-        '[Gifticon][Notification] skip debug test schedule: exact alarm unavailable',
+      await AppLogger.log(
+        tag: 'Notification',
+        event: 'debug_test_skip_exact_alarm',
       );
       return false;
     }
@@ -323,8 +450,14 @@ class GifticonNotificationService {
     );
 
     final pending = await _notifications.pendingNotificationRequests();
-    debugPrint(
-      '[Gifticon][Notification] debug test scheduled at $scheduledAt, pendingIds=${pending.map((e) => e.id).toList()}',
+
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'debug_test_scheduled',
+      data: {
+        'scheduledAt': scheduledAt.toIso8601String(),
+        'pendingIds': pending.map((e) => e.id).toList(),
+      },
     );
 
     return true;
@@ -332,6 +465,14 @@ class GifticonNotificationService {
 
   Future<void> cancelDebugTestNotification() async {
     await _notifications.cancel(id: _debugScheduledNotificationId);
+
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'cancel_debug_test',
+      data: {
+        'id': _debugScheduledNotificationId,
+      },
+    );
   }
 
   Future<void> _scheduleExpiryNotification({
@@ -341,7 +482,19 @@ class GifticonNotificationService {
     required String body,
     required String payload,
   }) async {
-    if (!scheduledAt.isAfter(_nowProvider.now())) return;
+    if (!scheduledAt.isAfter(_nowProvider.now())) {
+      await AppLogger.log(
+        tag: 'Notification',
+        event: 'schedule_expiry_item_skip_past',
+        data: {
+          'id': id,
+          'scheduledAt': scheduledAt.toIso8601String(),
+          'payload': payload,
+          'title': title,
+        },
+      );
+      return;
+    }
 
     const androidDetails = AndroidNotificationDetails(
       _expiryChannelId,
@@ -364,6 +517,17 @@ class GifticonNotificationService {
       notificationDetails: details,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       payload: payload,
+    );
+
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'schedule_expiry_item_done',
+      data: {
+        'id': id,
+        'scheduledAt': scheduledAt.toIso8601String(),
+        'payload': payload,
+        'title': title,
+      },
     );
   }
 
@@ -469,10 +633,15 @@ class GifticonNotificationService {
   }
 
   void _onNotificationResponse(NotificationResponse response) {
-    debugPrint(
-      '[Gifticon][Notification] response: id=${response.id} payload=${response.payload}',
+    AppLogger.log(
+      tag: 'Notification',
+      event: 'response',
+      data: {
+        'id': response.id,
+        'payload': response.payload,
+      },
     );
-    // 저장 완료 알림(_savedNotificationId) 수신 시 리스트 갱신 트리거
+
     if (response.id == _savedNotificationId ||
         response.id == _sharedNotificationId) {
       _onGifticonSaved?.call();
@@ -480,11 +649,14 @@ class GifticonNotificationService {
   }
 }
 
-/// 백그라운드에서 알림을 탭했을 때 호출되는 최상위 함수 (isolate 제약으로 콜백 직접 호출 불가)
-/// 앱이 포그라운드로 올 때 didChangeAppLifecycleState(resumed)에서 갱신되므로 여기선 로깅만 함
 @pragma('vm:entry-point')
 void _onBackgroundNotificationResponse(NotificationResponse response) {
-  debugPrint(
-    '[Gifticon][Notification][Background] response: id=${response.id} payload=${response.payload}',
+  AppLogger.log(
+    tag: 'Notification',
+    event: 'background_response',
+    data: {
+      'id': response.id,
+      'payload': response.payload,
+    },
   );
 }

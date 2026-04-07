@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'app_logger.dart';
 
 class ExactAlarmPermissionService {
   static const MethodChannel _channel =
@@ -11,13 +12,19 @@ class ExactAlarmPermissionService {
       await _channel.invokeMethod<bool>('canScheduleExactAlarms');
       return result ?? false;
     } on MissingPluginException {
-      debugPrint(
-        '[Gifticon][ExactAlarm] plugin unavailable in this isolate: canScheduleExactAlarms',
+      await AppLogger.log(
+        tag: 'ExactAlarm',
+        event: 'plugin_unavailable_can_schedule',
       );
       return false;
     } on PlatformException catch (e) {
-      debugPrint(
-        '[Gifticon][ExactAlarm] platform exception: ${e.code} ${e.message}',
+      await AppLogger.log(
+        tag: 'ExactAlarm',
+        event: 'platform_exception_can_schedule',
+        data: {
+          'code': e.code,
+          'message': e.message,
+        },
       );
       return false;
     }
@@ -29,13 +36,19 @@ class ExactAlarmPermissionService {
       await _channel.invokeMethod<bool>('openExactAlarmSettings');
       return result ?? false;
     } on MissingPluginException {
-      debugPrint(
-        '[Gifticon][ExactAlarm] plugin unavailable in this isolate: openExactAlarmSettings',
+      await AppLogger.log(
+        tag: 'ExactAlarm',
+        event: 'plugin_unavailable_open_settings',
       );
       return false;
     } on PlatformException catch (e) {
-      debugPrint(
-        '[Gifticon][ExactAlarm] platform exception: ${e.code} ${e.message}',
+      await AppLogger.log(
+        tag: 'ExactAlarm',
+        event: 'platform_exception_open_settings',
+        data: {
+          'code': e.code,
+          'message': e.message,
+        },
       );
       return false;
     }

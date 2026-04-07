@@ -1,9 +1,9 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 
 import '../models/gifticon_models.dart';
+import '../services/app_logger.dart';
 
 class RemoteGifticonAiParser {
   RemoteGifticonAiParser({
@@ -54,30 +54,55 @@ class RemoteGifticonAiParser {
       try {
         final delay = retryDelays[attempt];
         if (delay > Duration.zero) {
-          debugPrint(
-            '[Gifticon][HTTP] waiting ${delay.inSeconds}s before retry...',
+          await AppLogger.log(
+            tag: 'HTTP',
+            event: 'retry_wait',
+            data: {
+              'delaySeconds': delay.inSeconds,
+              'attempt': attempt + 1,
+            },
           );
           await Future<void>.delayed(delay);
         }
 
-        debugPrint(
-          '[Gifticon][HTTP] POST ${_dio.options.baseUrl}/api/gifticons/parse',
+        await AppLogger.log(
+          tag: 'HTTP',
+          event: 'parse_request',
+          data: {
+            'url': '${_dio.options.baseUrl}/api/gifticons/parse',
+            'attempt': '${attempt + 1}/${retryDelays.length}',
+            'rawTextLength': rawText.length,
+          },
         );
-        debugPrint(
-          '[Gifticon][HTTP][Attempt] ${attempt + 1}/${retryDelays.length}',
-        );
-        debugPrint('[Gifticon][HTTP][Request] rawText length=${rawText.length}');
 
         final result = await requestOnce();
-        debugPrint('[Gifticon][HTTP] parse success');
+
+        await AppLogger.log(
+          tag: 'HTTP',
+          event: 'parse_success',
+          data: {
+            'attempt': attempt + 1,
+            'merchantName': result.merchantName,
+            'itemName': result.itemName,
+            'couponNumber': result.couponNumber,
+            'expiresAt': result.expiresAt?.toIso8601String(),
+          },
+        );
+
         return result;
       } on DioException catch (e, st) {
-        debugPrint('[Gifticon][HTTP][DioError] type=${e.type}');
-        debugPrint('[Gifticon][HTTP][DioError] message=${e.message}');
-        debugPrint('[Gifticon][HTTP][DioError] status=${e.response?.statusCode}');
-        debugPrint('[Gifticon][HTTP][DioError] response=${e.response?.data}');
-        debugPrint('[Gifticon][HTTP][DioError] error=${e.error}');
-        debugPrintStack(stackTrace: st);
+        await AppLogger.log(
+          tag: 'HTTP',
+          event: 'dio_error',
+          data: {
+            'type': e.type.name,
+            'message': e.message,
+            'status': e.response?.statusCode,
+            'response': '${e.response?.data}',
+            'error': '${e.error}',
+            'stack': '$st',
+          },
+        );
 
         final retryable = e.type == DioExceptionType.connectionTimeout ||
             e.type == DioExceptionType.connectionError ||
@@ -87,22 +112,36 @@ class RemoteGifticonAiParser {
 
         final isLastAttempt = attempt == retryDelays.length - 1;
         if (!retryable || isLastAttempt) {
-          debugPrint(
-            '[Gifticon][HTTP] parse failed permanently '
-                '(retryable=$retryable, attempt=${attempt + 1})',
+          await AppLogger.log(
+            tag: 'HTTP',
+            event: 'parse_failed_permanently',
+            data: {
+              'retryable': retryable,
+              'attempt': attempt + 1,
+            },
           );
           rethrow;
         }
       } catch (e, st) {
-        debugPrint('[Gifticon][HTTP][Error] $e');
-        debugPrintStack(stackTrace: st);
+        await AppLogger.log(
+          tag: 'HTTP',
+          event: 'error',
+          data: {
+            'error': '$e',
+            'stack': '$st',
+          },
+        );
 
         final retryable = e is SocketException || e is HttpException;
         final isLastAttempt = attempt == retryDelays.length - 1;
         if (!retryable || isLastAttempt) {
-          debugPrint(
-            '[Gifticon][HTTP] parse failed permanently '
-                '(retryable=$retryable, attempt=${attempt + 1})',
+          await AppLogger.log(
+            tag: 'HTTP',
+            event: 'parse_failed_permanently',
+            data: {
+              'retryable': retryable,
+              'attempt': attempt + 1,
+            },
           );
           rethrow;
         }
