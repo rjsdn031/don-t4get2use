@@ -51,3 +51,6 @@ ios/Pods/
 ios/.symlinks/
 ios/Flutter/Flutter.framework
 ios/Flutter/Flutter.podspec
+
+android/key.properties
+d42u-keystore.jks
