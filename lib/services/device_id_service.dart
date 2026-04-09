@@ -9,6 +9,7 @@ class DeviceIdService {
   static const String _deviceIdKey = 'device_id';
   static const String _fcmTokenKey = 'fcm_token';
   static const String _nicknameKey = 'nickname';
+  static const String _shareEnabledKey = 'share_enabled';
 
   final Dio _dio;
 
@@ -22,7 +23,6 @@ class DeviceIdService {
     ),
   );
 
-  /// 기기 ID 반환 — 없으면 새로 발급 후 저장
   Future<String> getDeviceId() async {
     final prefs = await SharedPreferences.getInstance();
     final existing = prefs.getString(_deviceIdKey);
@@ -40,21 +40,17 @@ class DeviceIdService {
     return newId;
   }
 
-  /// 저장된 nickname 반환
   Future<String?> getNickname() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_nicknameKey);
   }
 
-  /// 저장된 FCM 토큰 반환 (로컬 캐시)
   Future<String?> getCachedFcmToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_fcmTokenKey);
   }
 
-  /// FCM 토큰 발급 + 서버 기기 등록
-  /// 앱 시작 시 1회 호출
-  Future<void> registerDevice() async {
+  Future<void> registerDevice({required bool shareEnabled}) async {
     try {
       final deviceId = await getDeviceId();
       final token = await _getFcmToken();
@@ -63,6 +59,9 @@ class DeviceIdService {
         await AppLogger.log(
           tag: 'DeviceId',
           event: 'fcm_unavailable_skip_registration',
+          data: {
+            'shareEnabled': shareEnabled,
+          },
         );
         return;
       }
@@ -70,13 +69,21 @@ class DeviceIdService {
       final prefs = await SharedPreferences.getInstance();
       final cachedToken = prefs.getString(_fcmTokenKey);
       final cachedNickname = prefs.getString(_nicknameKey);
+      final cachedShareEnabled = prefs.getBool(_shareEnabledKey);
 
-      if (cachedToken == token &&
-          cachedNickname != null &&
-          cachedNickname.isNotEmpty) {
+      final shouldSkip =
+          cachedToken == token &&
+              cachedNickname != null &&
+              cachedNickname.isNotEmpty &&
+              cachedShareEnabled == shareEnabled;
+
+      if (shouldSkip) {
         await AppLogger.log(
           tag: 'DeviceId',
           event: 'skip_registration_cached',
+          data: {
+            'shareEnabled': shareEnabled,
+          },
         );
         return;
       }
@@ -86,13 +93,16 @@ class DeviceIdService {
         data: {
           'deviceId': deviceId,
           'fcmToken': token,
+          'shareEnabled': shareEnabled,
         },
       );
+
       await AppLogger.log(
         tag: 'DeviceId',
         event: 'register_response',
         data: {
           'response': '${response.data}',
+          'shareEnabled': shareEnabled,
         },
       );
 
@@ -100,6 +110,7 @@ class DeviceIdService {
       final nickname = data['nickname'] as String?;
 
       await prefs.setString(_fcmTokenKey, token);
+      await prefs.setBool(_shareEnabledKey, shareEnabled);
 
       if (nickname != null && nickname.isNotEmpty) {
         await prefs.setString(_nicknameKey, nickname);
@@ -125,6 +136,7 @@ class DeviceIdService {
         event: 'device_registered',
         data: {
           'deviceId': deviceId,
+          'shareEnabled': shareEnabled,
         },
       );
     } catch (e) {
@@ -133,8 +145,10 @@ class DeviceIdService {
         event: 'registration_failed',
         data: {
           'error': '$e',
+          'shareEnabled': shareEnabled,
         },
       );
+      rethrow;
     }
   }
 

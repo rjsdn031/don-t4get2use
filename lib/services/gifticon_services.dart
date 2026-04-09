@@ -89,6 +89,8 @@ class GifticonServices {
 
     final workService = GifticonWorkService();
     final autoShareSettingsService = AutoShareSettingsService();
+    final isAutoShareEnabled =
+    await autoShareSettingsService.isAutoShareEnabled();
 
     await notificationService.rescheduleAllExpiryNotifications(
       storageService.getAllGifticons(),
@@ -139,10 +141,15 @@ class GifticonServices {
       notifications: notificationsPlugin,
     );
 
-    await deviceIdService.registerDevice();
+    await deviceIdService.registerDevice(
+      shareEnabled: isAutoShareEnabled,
+    );
     await AppLogger.log(
       tag: 'Services',
       event: 'device_registered',
+      data: {
+        'shareEnabled': isAutoShareEnabled,
+      },
     );
 
     await fcmService.init();
@@ -176,7 +183,8 @@ class GifticonServices {
     required AutoShareSettingsService autoShareSettingsService,
   }) async {
     final now = nowProvider.now();
-    final isAutoShareEnabled = await autoShareSettingsService.isAutoShareEnabled();
+    final isAutoShareEnabled =
+    await autoShareSettingsService.isAutoShareEnabled();
 
     await AppLogger.log(
       tag: 'Services',

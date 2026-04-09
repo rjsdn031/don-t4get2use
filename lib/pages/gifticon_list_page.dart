@@ -10,6 +10,7 @@ import '../services/auto_share_settings_service.dart';
 import '../services/gifticon_notification_service.dart';
 import '../services/gifticon_services.dart';
 import '../services/gifticon_storage_service.dart';
+import '../services/gifticon_work_service.dart';
 import '../services/now_provider.dart';
 import '../services/screenshot_automation_service.dart';
 import '../services/app_logger.dart';
@@ -566,11 +567,93 @@ class _GifticonListPageState extends State<GifticonListPage>
   }
 
   Future<void> _toggleAutoShare(bool value) async {
-    await _autoShareSettingsService.setAutoShareEnabled(value);
-    if (!mounted) return;
-    setState(() {
-      _isAutoShareEnabled = value;
-    });
+    final previous = _isAutoShareEnabled;
+
+    await AppLogger.log(
+      tag: 'ListPage',
+      event: 'toggle_auto_share_start',
+      data: {
+        'previous': previous,
+        'next': value,
+      },
+    );
+
+    try {
+      await _autoShareSettingsService.setAutoShareEnabled(value);
+
+      // 서버의 devices.shareEnabled 동기화
+      await _services.deviceIdService.registerDevice(shareEnabled: value);
+
+      final items = _storageService.getAllGifticons();
+      final workService = GifticonWorkService();
+
+      if (!value) {
+        for (final item in items) {
+          await workService.cancelAutoShareWork(item.id);
+        }
+
+        await AppLogger.log(
+          tag: 'ListPage',
+          event: 'toggle_auto_share_disabled_cancelled_all',
+          data: {
+            'count': items.length,
+          },
+        );
+      } else {
+        final now = _nowProvider.now();
+
+        for (final item in items) {
+          if (item.isShared || item.isReceived || item.isUsed || item.expiresAt == null) {
+            continue;
+          }
+
+          final expiresAt = item.expiresAt!;
+          final autoShareAt = DateTime(
+            expiresAt.year,
+            expiresAt.month,
+            expiresAt.day,
+            8,
+            0,
+            0,
+          );
+
+          if (autoShareAt.isAfter(now)) {
+            await workService.scheduleAutoShareWork(
+              gifticonId: item.id,
+              initialDelay: autoShareAt.difference(now),
+            );
+          }
+        }
+
+        await AppLogger.log(
+          tag: 'ListPage',
+          event: 'toggle_auto_share_enabled_rescheduled',
+        );
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _isAutoShareEnabled = value;
+      });
+    } catch (e, st) {
+      await AppLogger.log(
+        tag: 'ListPage',
+        event: 'toggle_auto_share_error',
+        data: {
+          'error': '$e',
+          'stack': '$st',
+        },
+      );
+
+      await _autoShareSettingsService.setAutoShareEnabled(previous);
+
+      if (!mounted) return;
+      setState(() {
+        _isAutoShareEnabled = previous;
+      });
+
+      rethrow;
+    }
   }
 
   Future<void> _loadItems() async {

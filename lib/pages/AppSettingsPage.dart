@@ -56,6 +56,8 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   }
 
   Future<void> _handleAutoShareToggle(bool value) async {
+    final previous = _isAutoShareEnabled;
+
     setState(() {
       _isAutoShareEnabled = value;
       _isUpdatingAutoShare = true;
@@ -63,6 +65,14 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
 
     try {
       await widget.onAutoShareChanged(value);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isAutoShareEnabled = previous;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('자동 공유 설정 변경에 실패했어요.\n$e')),
+      );
     } finally {
       if (!mounted) return;
       setState(() {
@@ -275,7 +285,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                 '자동 공유를 켜면 만료 하루 전 오전 8시에 앱을 사용하는 다른 사람에게 자동으로 공유돼요.',
               ),
               _buildGuideItem(
-                '자동 공유를 꺼도 다른 사람이 공유한 기프티콘은 받을 수 있어요.',
+                '자동 공유를 켜야 다른 사람이 공유한 기프티콘도 받을 수 있어요.',
               ),
               _buildGuideItem(
                 '원하지 않을 경우 언제든지 이 설정에서 기능을 끌 수 있어요.',
