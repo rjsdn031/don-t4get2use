@@ -7,7 +7,6 @@ import android.content.Intent
 import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
@@ -29,6 +28,7 @@ class MainActivity : FlutterActivity() {
         private const val METHOD_CHANNEL = "gifticon/latest_image_finder"
         private const val EVENT_CHANNEL = "gifticon/screenshot_events"
         private const val EXACT_ALARM_CHANNEL = "gifticon/exact_alarm"
+        private const val AUTO_SHARE_ALARM_CHANNEL = "gifticon/auto_share_alarm"
     }
 
     private var eventSink: EventChannel.EventSink? = null
@@ -74,6 +74,63 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     } catch (e: Exception) {
                         result.error("EXACT_ALARM_SETTINGS_ERROR", e.message, null)
+                    }
+                }
+
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            AUTO_SHARE_ALARM_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "scheduleAutoShareAlarm" -> {
+                    try {
+                        val gifticonId = call.argument<String>("gifticonId")
+                        val triggerAtMillis = call.argument<Long>("triggerAtMillis")
+
+                        if (gifticonId.isNullOrBlank() || triggerAtMillis == null) {
+                            result.error(
+                                "INVALID_ARGS",
+                                "gifticonId and triggerAtMillis are required",
+                                null
+                            )
+                            return@setMethodCallHandler
+                        }
+
+                        AutoShareAlarmScheduler.schedule(
+                            context = this,
+                            gifticonId = gifticonId,
+                            triggerAtMillis = triggerAtMillis
+                        )
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("AUTO_SHARE_ALARM_SCHEDULE_ERROR", e.message, null)
+                    }
+                }
+
+                "cancelAutoShareAlarm" -> {
+                    try {
+                        val gifticonId = call.argument<String>("gifticonId")
+
+                        if (gifticonId.isNullOrBlank()) {
+                            result.error(
+                                "INVALID_ARGS",
+                                "gifticonId is required",
+                                null
+                            )
+                            return@setMethodCallHandler
+                        }
+
+                        AutoShareAlarmScheduler.cancel(
+                            context = this,
+                            gifticonId = gifticonId
+                        )
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("AUTO_SHARE_ALARM_CANCEL_ERROR", e.message, null)
                     }
                 }
 

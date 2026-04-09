@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/stored_gifticon.dart';
 import '../modules/screenshot_event_listener_module.dart';
 import '../services/auto_share_settings_service.dart';
+import '../services/exact_auto_share_service.dart';
 import '../services/gifticon_notification_service.dart';
 import '../services/gifticon_services.dart';
 import '../services/gifticon_storage_service.dart';
@@ -585,20 +586,12 @@ class _GifticonListPageState extends State<GifticonListPage>
       await _services.deviceIdService.registerDevice(shareEnabled: value);
 
       final items = _storageService.getAllGifticons();
-      final workService = GifticonWorkService();
+      final alarmService = ExactAutoShareService();
 
       if (!value) {
         for (final item in items) {
-          await workService.cancelAutoShareWork(item.id);
+          await alarmService.cancelAutoShareAlarm(item.id);
         }
-
-        await AppLogger.log(
-          tag: 'ListPage',
-          event: 'toggle_auto_share_disabled_cancelled_all',
-          data: {
-            'count': items.length,
-          },
-        );
       } else {
         final now = _nowProvider.now();
 
@@ -618,17 +611,12 @@ class _GifticonListPageState extends State<GifticonListPage>
           );
 
           if (autoShareAt.isAfter(now)) {
-            await workService.scheduleAutoShareWork(
+            await alarmService.scheduleAutoShareAlarm(
               gifticonId: item.id,
-              initialDelay: autoShareAt.difference(now),
+              triggerAt: autoShareAt,
             );
           }
         }
-
-        await AppLogger.log(
-          tag: 'ListPage',
-          event: 'toggle_auto_share_enabled_rescheduled',
-        );
       }
 
       if (!mounted) return;

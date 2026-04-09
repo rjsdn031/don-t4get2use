@@ -14,6 +14,8 @@ import '../services/gifticon_pipeline_service.dart';
 import '../services/gifticon_services.dart';
 import '../services/gifticon_storage_service.dart';
 import '../services/now_provider.dart';
+import '../services/auto_share_settings_service.dart';
+import '../services/exact_auto_share_service.dart';
 
 class GifticonAnalysisPage extends StatefulWidget {
   const GifticonAnalysisPage({
@@ -223,6 +225,38 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
       final scheduled = await _notificationService!.scheduleExpiryNotifications(
         result.gifticon,
       );
+
+      final autoShareSettingsService = AutoShareSettingsService();
+      final exactAutoShareService = ExactAutoShareService();
+      final isAutoShareEnabled =
+      await autoShareSettingsService.isAutoShareEnabled();
+
+      final savedGifticon = result.gifticon;
+      final expiresAt = savedGifticon.expiresAt;
+      final now = DateTime.now();
+
+      if (isAutoShareEnabled &&
+          !savedGifticon.isShared &&
+          !savedGifticon.isReceived &&
+          !savedGifticon.isUsed &&
+          expiresAt != null &&
+          expiresAt.isAfter(now)) {
+        final autoShareAt = DateTime(
+          expiresAt.year,
+          expiresAt.month,
+          expiresAt.day,
+          8,
+          0,
+          0,
+        );
+
+        if (autoShareAt.isAfter(now)) {
+          await exactAutoShareService.scheduleAutoShareAlarm(
+            gifticonId: savedGifticon.id,
+            triggerAt: autoShareAt,
+          );
+        }
+      }
 
       setState(() {
         _saved = true;

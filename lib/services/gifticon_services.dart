@@ -7,8 +7,10 @@ import '../modules/image_picker_module.dart';
 import '../modules/ocr_module.dart';
 import '../modules/remote_gifticon_ai_parser.dart';
 import 'app_logger.dart';
+import 'auto_share_executor.dart';
 import 'auto_share_settings_service.dart';
 import 'device_id_service.dart';
+import 'exact_auto_share_service.dart';
 import 'fcm_service.dart';
 import 'gifticon_notification_service.dart';
 import 'gifticon_pipeline_service.dart';
@@ -185,6 +187,7 @@ class GifticonServices {
     final now = nowProvider.now();
     final isAutoShareEnabled =
     await autoShareSettingsService.isAutoShareEnabled();
+    final exactAutoShareService = ExactAutoShareService();
 
     await AppLogger.log(
       tag: 'Services',
@@ -219,10 +222,24 @@ class GifticonServices {
         continue;
       }
 
+      final expiresAt = stored.expiresAt!;
+      if (!expiresAt.isAfter(now)) {
+        await AppLogger.log(
+          tag: 'Services',
+          event: 'auto_share_reschedule_skip_expired',
+          data: {
+            'gifticonId': stored.id,
+            'expiresAt': expiresAt.toIso8601String(),
+            'now': now.toIso8601String(),
+          },
+        );
+        continue;
+      }
+
       final autoShareAt = DateTime(
-        stored.expiresAt!.year,
-        stored.expiresAt!.month,
-        stored.expiresAt!.day,
+        expiresAt.year,
+        expiresAt.month,
+        expiresAt.day,
         8,
         0,
         0,
@@ -231,32 +248,32 @@ class GifticonServices {
       if (!autoShareAt.isAfter(now)) {
         await AppLogger.log(
           tag: 'Services',
-          event: 'auto_share_reschedule_skip_past',
+          event: 'auto_share_reschedule_run_missed',
           data: {
             'gifticonId': stored.id,
             'autoShareAt': autoShareAt.toIso8601String(),
             'now': now.toIso8601String(),
           },
         );
+
+        final executor = AutoShareExecutor();
+        await executor.execute(stored.id);
         continue;
       }
-
-      final delay = autoShareAt.difference(now);
 
       await AppLogger.log(
         tag: 'Services',
         event: 'auto_share_reschedule_schedule',
         data: {
           'gifticonId': stored.id,
-          'expiresAt': stored.expiresAt!.toIso8601String(),
+          'expiresAt': expiresAt.toIso8601String(),
           'autoShareAt': autoShareAt.toIso8601String(),
-          'delay': delay.toString(),
         },
       );
 
-      await workService.scheduleAutoShareWork(
+      await exactAutoShareService.scheduleAutoShareAlarm(
         gifticonId: stored.id,
-        initialDelay: delay,
+        triggerAt: autoShareAt,
       );
     }
 

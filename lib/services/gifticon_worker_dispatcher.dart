@@ -9,10 +9,10 @@ import '../modules/remote_gifticon_ai_parser.dart';
 import 'app_logger.dart';
 import 'auto_share_settings_service.dart';
 import 'device_id_service.dart';
+import 'exact_auto_share_service.dart';
 import 'gifticon_notification_service.dart';
 import 'gifticon_sharing_service.dart';
 import 'gifticon_storage_service.dart';
-import 'gifticon_work_service.dart';
 
 const String kGifticonParseTask = 'gifticon_parse_task';
 const String kGifticonAutoShareTask = 'gifticon_auto_share_task';
@@ -63,7 +63,7 @@ void callbackDispatcher() {
         }
 
         final storageService = GifticonStorageService();
-        final workService = GifticonWorkService();
+        final exactAutoShareService = ExactAutoShareService();
         final autoShareSettingsService = AutoShareSettingsService();
 
         await storageService.init();
@@ -193,9 +193,9 @@ void callbackDispatcher() {
               },
             );
 
-            await workService.scheduleAutoShareWork(
+            await exactAutoShareService.scheduleAutoShareAlarm(
               gifticonId: stored.id,
-              initialDelay: delay,
+              triggerAt: autoShareAt,
             );
           } else {
             await AppLogger.log(
@@ -351,12 +351,27 @@ void callbackDispatcher() {
             'experimentGroup': experimentGroup,
           },
         );
-        await sharingService.uploadForSharing(stored);
+
+        final success = await sharingService.uploadForSharing(stored);
+
+        if (!success) {
+          await AppLogger.log(
+            tag: 'Worker',
+            event: 'auto_share_upload_failed',
+            data: {
+              'gifticonId': gifticonId,
+              'experimentGroup': experimentGroup,
+            },
+          );
+          return true;
+        }
+
         await AppLogger.log(
           tag: 'Worker',
-          event: 'auto_share_upload_done',
+          event: 'auto_share_upload_success',
           data: {
             'gifticonId': gifticonId,
+            'experimentGroup': experimentGroup,
           },
         );
 

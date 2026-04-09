@@ -22,13 +22,21 @@ class GifticonSharingService {
           receiveTimeout: const Duration(seconds: 30),
           headers: {'Content-Type': 'application/json'},
         ),
-      );
+      ) {
+    AppLogger.log(
+      tag: 'Sharing',
+      event: 'dio_created',
+      data: {
+        'baseUrl': _dio.options.baseUrl,
+      },
+    );
+  }
 
   final Dio _dio;
   final GifticonStorageService storageService;
   final DeviceIdService deviceIdService;
 
-  Future<void> uploadForSharing(StoredGifticon stored) async {
+  Future<bool> uploadForSharing(StoredGifticon stored) async {
     try {
       if (stored.sharedAt != null) {
         await AppLogger.log(
@@ -38,7 +46,7 @@ class GifticonSharingService {
             'gifticonId': stored.id,
           },
         );
-        return;
+        return false;
       }
 
       await AppLogger.log(
@@ -64,11 +72,26 @@ class GifticonSharingService {
             'gifticonId': stored.id,
           },
         );
-        return;
+        return false;
       }
 
+      final requestPath = '/api/gifticons/share';
+      final requestUri =
+      Uri.parse(_dio.options.baseUrl).resolve(requestPath);
+
+      await AppLogger.log(
+        tag: 'Sharing',
+        event: 'upload_request_prepared',
+        data: {
+          'gifticonId': stored.id,
+          'baseUrl': _dio.options.baseUrl,
+          'requestPath': requestPath,
+          'requestUri': requestUri.toString(),
+        },
+      );
+
       await _dio.post<void>(
-        '/api/gifticons/share',
+        requestPath,
         data: {
           'gifticonId': stored.id,
           'ownerId': deviceId,
@@ -90,6 +113,8 @@ class GifticonSharingService {
           'ownerId': deviceId,
         },
       );
+
+      return true;
     } catch (e, st) {
       await AppLogger.log(
         tag: 'Sharing',
@@ -100,6 +125,7 @@ class GifticonSharingService {
           'stack': '$st',
         },
       );
+      return false;
     }
   }
 

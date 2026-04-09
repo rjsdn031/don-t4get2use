@@ -1,5 +1,9 @@
+import 'dart:ui';
+
 import 'package:dont4get2use2/pages/debug_scenario_runner_page.dart';
 import 'package:dont4get2use2/pages/gifticon_list_page.dart';
+import 'package:dont4get2use2/services/app_logger.dart';
+import 'package:dont4get2use2/services/auto_share_executor.dart';
 import 'package:dont4get2use2/services/debug_now_provider.dart';
 import 'package:dont4get2use2/services/debug_time_controller.dart';
 import 'package:dont4get2use2/services/gifticon_services.dart';
@@ -12,6 +16,51 @@ import 'package:workmanager/workmanager.dart';
 import 'firebase_options.dart';
 import 'services/fcm_service.dart';
 import 'services/gifticon_worker_dispatcher.dart';
+
+@pragma('vm:entry-point')
+Future<void> autoShareBackgroundEntry() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  DartPluginRegistrant.ensureInitialized();
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  await Hive.initFlutter();
+
+  final gifticonId =
+      WidgetsBinding.instance.platformDispatcher.defaultRouteName;
+
+  await AppLogger.log(
+    tag: 'AutoShareEntry',
+    event: 'entry_started',
+    data: {
+      'gifticonId': gifticonId,
+    },
+  );
+
+  if (gifticonId.isEmpty || gifticonId == '/') {
+    await AppLogger.log(
+      tag: 'AutoShareEntry',
+      event: 'entry_invalid_gifticon_id',
+      data: {
+        'gifticonId': gifticonId,
+      },
+    );
+    return;
+  }
+
+  final executor = AutoShareExecutor();
+  final success = await executor.execute(gifticonId);
+
+  await AppLogger.log(
+    tag: 'AutoShareEntry',
+    event: 'entry_finished',
+    data: {
+      'gifticonId': gifticonId,
+      'success': success,
+    },
+  );
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

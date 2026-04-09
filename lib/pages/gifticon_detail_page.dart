@@ -6,7 +6,7 @@ import '../models/stored_gifticon.dart';
 import '../services/gifticon_notification_service.dart';
 import '../services/gifticon_sharing_service.dart';
 import '../services/gifticon_storage_service.dart';
-import '../services/gifticon_work_service.dart';
+import '../services/exact_auto_share_service.dart';
 import '../services/app_logger.dart';
 import 'gifticon_edit_page.dart';
 
@@ -59,7 +59,7 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
   ];
 
   late final ScrollController _scrollController;
-  late final GifticonWorkService _workService;
+  late final ExactAutoShareService _exactAutoShareService;
 
   late StoredGifticon _item;
   bool _isMarkingUsed = false;
@@ -68,7 +68,7 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
   @override
   void initState() {
     _scrollController = ScrollController();
-    _workService = GifticonWorkService();
+    _exactAutoShareService = ExactAutoShareService();
     super.initState();
     _item = widget.item;
   }
@@ -86,7 +86,7 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
   }
 
   Future<void> _rescheduleAutoShare(StoredGifticon item) async {
-    await _workService.cancelAutoShareWork(item.id);
+    await _exactAutoShareService.cancelAutoShareAlarm(item.id);
 
     if (item.isUsed || item.isShared || item.isReceived) {
       await AppLogger.log(
@@ -114,6 +114,21 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
       return;
     }
 
+    final now = DateTime.now();
+
+    if (!expiresAt.isAfter(now)) {
+      await AppLogger.log(
+        tag: 'Detail',
+        event: 'auto_share_reschedule_skip_expired',
+        data: {
+          'id': item.id,
+          'expiresAt': expiresAt.toIso8601String(),
+          'now': now.toIso8601String(),
+        },
+      );
+      return;
+    }
+
     final autoShareAt = DateTime(
       expiresAt.year,
       expiresAt.month,
@@ -123,9 +138,6 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
       0,
     );
 
-    final now = DateTime.now();
-    final delay = autoShareAt.difference(now);
-
     await AppLogger.log(
       tag: 'Detail',
       event: 'auto_share_reschedule',
@@ -134,11 +146,10 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
         'now': now.toIso8601String(),
         'expiresAt': expiresAt.toIso8601String(),
         'autoShareAt': autoShareAt.toIso8601String(),
-        'delay': delay.toString(),
       },
     );
 
-    if (delay.isNegative || delay == Duration.zero) {
+    if (!autoShareAt.isAfter(now)) {
       await AppLogger.log(
         tag: 'Detail',
         event: 'auto_share_reschedule_skip_passed',
@@ -149,9 +160,9 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
       return;
     }
 
-    await _workService.scheduleAutoShareWork(
+    await _exactAutoShareService.scheduleAutoShareAlarm(
       gifticonId: item.id,
-      initialDelay: delay,
+      triggerAt: autoShareAt,
     );
   }
 
@@ -315,7 +326,7 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
       );
 
       await widget.notificationService.cancelExpiryNotifications(_item.id);
-      await _workService.cancelAutoShareWork(_item.id);
+      await _exactAutoShareService.cancelAutoShareAlarm(_item.id);
 
       if (widget.sharingService != null && (_item.isShared || _item.isReceived)) {
         await widget.sharingService!.markAsUsedRemote(
