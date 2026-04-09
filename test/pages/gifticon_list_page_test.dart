@@ -1,3 +1,4 @@
+import 'package:dont4get2use2/services/auto_share_settings_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -35,6 +36,8 @@ class MockGifticonSharingService extends Mock
 
 class MockFcmService extends Mock implements FcmService {}
 
+class MockAutoShareSettingsService extends Mock implements AutoShareSettingsService {}
+
 void main() {
   late MockGifticonStorageService storageService;
   late MockGifticonNotificationService notificationService;
@@ -44,6 +47,7 @@ void main() {
   late MockDeviceIdService deviceIdService;
   late MockGifticonSharingService sharingService;
   late MockFcmService fcmService;
+  late MockAutoShareSettingsService autoShareSettingService;
   late GifticonServices services;
 
   StoredGifticon makeGifticon({
@@ -85,6 +89,7 @@ void main() {
     deviceIdService = MockDeviceIdService();
     sharingService = MockGifticonSharingService();
     fcmService = MockFcmService();
+    autoShareSettingService = MockAutoShareSettingsService();
 
     services = GifticonServices(
       storageService: storageService,
@@ -95,6 +100,7 @@ void main() {
       deviceIdService: deviceIdService,
       sharingService: sharingService,
       fcmService: fcmService,
+      autoShareSettingsService: autoShareSettingService,
     );
   });
 

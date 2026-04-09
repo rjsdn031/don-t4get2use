@@ -7,6 +7,7 @@ import '../modules/image_picker_module.dart';
 import '../modules/ocr_module.dart';
 import '../modules/remote_gifticon_ai_parser.dart';
 import 'app_logger.dart';
+import 'auto_share_settings_service.dart';
 import 'device_id_service.dart';
 import 'fcm_service.dart';
 import 'gifticon_notification_service.dart';
@@ -28,6 +29,7 @@ class GifticonServices {
   final DeviceIdService deviceIdService;
   final GifticonSharingService sharingService;
   final FcmService fcmService;
+  final AutoShareSettingsService autoShareSettingsService;
 
   const GifticonServices({
     required this.storageService,
@@ -38,6 +40,7 @@ class GifticonServices {
     required this.deviceIdService,
     required this.sharingService,
     required this.fcmService,
+    required this.autoShareSettingsService,
   });
 
   static Future<GifticonServices> create({
@@ -85,6 +88,7 @@ class GifticonServices {
     );
 
     final workService = GifticonWorkService();
+    final autoShareSettingsService = AutoShareSettingsService();
 
     await notificationService.rescheduleAllExpiryNotifications(
       storageService.getAllGifticons(),
@@ -102,6 +106,7 @@ class GifticonServices {
       storageService: storageService,
       workService: workService,
       nowProvider: resolvedNowProvider,
+      autoShareSettingsService: autoShareSettingsService,
     );
 
     final pipelineService = GifticonPipelineService(
@@ -160,6 +165,7 @@ class GifticonServices {
       deviceIdService: deviceIdService,
       sharingService: sharingService,
       fcmService: fcmService,
+      autoShareSettingsService: autoShareSettingsService,
     );
   }
 
@@ -167,8 +173,10 @@ class GifticonServices {
     required GifticonStorageService storageService,
     required GifticonWorkService workService,
     required NowProvider nowProvider,
+    required AutoShareSettingsService autoShareSettingsService,
   }) async {
     final now = nowProvider.now();
+    final isAutoShareEnabled = await autoShareSettingsService.isAutoShareEnabled();
 
     await AppLogger.log(
       tag: 'Services',
@@ -176,8 +184,17 @@ class GifticonServices {
       data: {
         'now': now.toIso8601String(),
         'gifticonCount': storageService.getAllGifticons().length,
+        'isAutoShareEnabled': isAutoShareEnabled,
       },
     );
+
+    if (!isAutoShareEnabled) {
+      await AppLogger.log(
+        tag: 'Services',
+        event: 'auto_share_reschedule_skip_disabled',
+      );
+      return;
+    }
 
     for (final stored in storageService.getAllGifticons()) {
       if (stored.isShared || stored.isUsed || stored.expiresAt == null) {

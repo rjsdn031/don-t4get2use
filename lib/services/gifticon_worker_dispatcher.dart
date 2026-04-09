@@ -7,6 +7,7 @@ import 'package:workmanager/workmanager.dart';
 
 import '../modules/remote_gifticon_ai_parser.dart';
 import 'app_logger.dart';
+import 'auto_share_settings_service.dart';
 import 'device_id_service.dart';
 import 'gifticon_notification_service.dart';
 import 'gifticon_sharing_service.dart';
@@ -63,6 +64,7 @@ void callbackDispatcher() {
 
         final storageService = GifticonStorageService();
         final workService = GifticonWorkService();
+        final autoShareSettingsService = AutoShareSettingsService();
 
         await storageService.init();
         await notificationService.init();
@@ -149,8 +151,22 @@ void callbackDispatcher() {
           );
         }
 
+        // 자동 공유 설정 확인
+        final isAutoShareEnabled = await autoShareSettingsService.isAutoShareEnabled();
+        final experimentGroup = await autoShareSettingsService.getExperimentGroup();
+
+        await AppLogger.log(
+          tag: 'Worker',
+          event: 'check_auto_share_settings',
+          data: {
+            'gifticonId': stored.id,
+            'isAutoShareEnabled': isAutoShareEnabled,
+            'experimentGroup': experimentGroup,
+          },
+        );
+
         final expiresAt = stored.expiresAt;
-        if (expiresAt != null) {
+        if (expiresAt != null && isAutoShareEnabled) {
           final autoShareAt = DateTime(
             expiresAt.year,
             expiresAt.month,
@@ -173,6 +189,7 @@ void callbackDispatcher() {
                 'autoShareAt': autoShareAt.toIso8601String(),
                 'now': now.toIso8601String(),
                 'delay': delay.toString(),
+                'experimentGroup': experimentGroup,
               },
             );
 
@@ -191,6 +208,15 @@ void callbackDispatcher() {
               },
             );
           }
+        } else if (expiresAt != null && !isAutoShareEnabled) {
+          await AppLogger.log(
+            tag: 'Worker',
+            event: 'auto_share_disabled_skip',
+            data: {
+              'gifticonId': stored.id,
+              'experimentGroup': experimentGroup,
+            },
+          );
         }
 
         await AppLogger.log(
@@ -229,6 +255,33 @@ void callbackDispatcher() {
             event: 'invalid_auto_share_input_data',
           );
           return false;
+        }
+
+        // 자동 공유 설정 확인 (A군인 경우 실행하지 않음)
+        final autoShareSettingsService = AutoShareSettingsService();
+        final isAutoShareEnabled = await autoShareSettingsService.isAutoShareEnabled();
+        final experimentGroup = await autoShareSettingsService.getExperimentGroup();
+
+        await AppLogger.log(
+          tag: 'Worker',
+          event: 'auto_share_task_settings_check',
+          data: {
+            'gifticonId': gifticonId,
+            'isAutoShareEnabled': isAutoShareEnabled,
+            'experimentGroup': experimentGroup,
+          },
+        );
+
+        if (!isAutoShareEnabled) {
+          await AppLogger.log(
+            tag: 'Worker',
+            event: 'auto_share_skip_disabled',
+            data: {
+              'gifticonId': gifticonId,
+              'experimentGroup': experimentGroup,
+            },
+          );
+          return true;
         }
 
         final storageService = GifticonStorageService();
@@ -295,6 +348,7 @@ void callbackDispatcher() {
           event: 'auto_share_upload_start',
           data: {
             'gifticonId': gifticonId,
+            'experimentGroup': experimentGroup,
           },
         );
         await sharingService.uploadForSharing(stored);

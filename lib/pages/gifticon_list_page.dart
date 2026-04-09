@@ -6,13 +6,14 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../models/stored_gifticon.dart';
 import '../modules/screenshot_event_listener_module.dart';
+import '../services/auto_share_settings_service.dart';
 import '../services/gifticon_notification_service.dart';
 import '../services/gifticon_services.dart';
 import '../services/gifticon_storage_service.dart';
 import '../services/now_provider.dart';
 import '../services/screenshot_automation_service.dart';
 import '../services/app_logger.dart';
-import 'ScreenshotAutoDetectSettingsPage.dart';
+import 'AppSettingsPage.dart';
 import 'gifticon_analysis_page.dart';
 import 'gifticon_detail_page.dart';
 
@@ -160,6 +161,7 @@ class _GifticonListPageState extends State<GifticonListPage>
   late final GifticonNotificationService _notificationService;
   late final NowProvider _nowProvider =
       widget.nowProviderOverride ?? SystemNowProvider();
+  late final AutoShareSettingsService _autoShareSettingsService;
 
   StreamSubscription<dynamic>? _screenshotSubscription;
   StreamSubscription<List<StoredGifticon>>? _itemsSubscription;
@@ -173,6 +175,7 @@ class _GifticonListPageState extends State<GifticonListPage>
   bool _isInitialized = false;
   bool _isCheckingExactAlarmPermission = false;
   bool _canScheduleExactAlarms = false;
+  bool _isAutoShareEnabled = false;
 
   List<StoredGifticon> _items = const [];
   String? _myNickname;
@@ -306,10 +309,14 @@ class _GifticonListPageState extends State<GifticonListPage>
       _automationService = _services.automationService;
       _screenshotEventListener = ScreenshotEventListenerModule();
       _notificationService = _services.notificationService;
+      _autoShareSettingsService = AutoShareSettingsService();
 
       if (!mounted) return;
 
       _isInitialized = true;
+      _isAutoShareEnabled =
+      await _autoShareSettingsService.isAutoShareEnabled();
+
       await _loadMyNickname();
       await _loadItems();
       await _refreshExactAlarmPermissionStatus();
@@ -558,6 +565,14 @@ class _GifticonListPageState extends State<GifticonListPage>
     });
   }
 
+  Future<void> _toggleAutoShare(bool value) async {
+    await _autoShareSettingsService.setAutoShareEnabled(value);
+    if (!mounted) return;
+    setState(() {
+      _isAutoShareEnabled = value;
+    });
+  }
+
   Future<void> _loadItems() async {
     final items = _storageService.getAllGifticons();
     await AppLogger.log(
@@ -668,10 +683,14 @@ class _GifticonListPageState extends State<GifticonListPage>
   Future<void> _openScreenshotSettingsPage() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ScreenshotAutoDetectSettingsPage(
-          isEnabled: _isListeningEnabled,
-          onToggleChanged: (value) async {
+        builder: (_) => AppSettingsPage(
+          isScreenshotAutoDetectEnabled: _isListeningEnabled,
+          onScreenshotAutoDetectChanged: (value) async {
             await _toggleListening(value);
+          },
+          isAutoShareEnabled: _isAutoShareEnabled,
+          onAutoShareChanged: (value) async {
+            await _toggleAutoShare(value);
           },
         ),
       ),
