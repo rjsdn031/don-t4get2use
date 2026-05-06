@@ -74,8 +74,7 @@ void main() async {
   await Hive.initFlutter();
 
   await Workmanager().initialize(
-    callbackDispatcher,
-    isInDebugMode: true,
+    callbackDispatcher
   );
 
   runApp(const MyApp());
@@ -152,9 +151,8 @@ class _AppBootstrapPageState extends State<AppBootstrapPage> {
         const bool useDebugRunner = false; // true면 test session
 
         if (useDebugRunner) {
-          return DebugScenarioRunnerPage(
-            services: services,
-            debugTimeController: _debugTimeController,
+          return NotificationTestPage(
+            notificationService: services.notificationService,
           );
         }
 

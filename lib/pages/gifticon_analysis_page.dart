@@ -222,14 +222,16 @@ class _GifticonAnalysisPageState extends State<GifticonAnalysisPage> {
         return;
       }
 
-      final scheduled = await _notificationService!.scheduleExpiryNotifications(
-        result.gifticon,
-      );
-
       final autoShareSettingsService = AutoShareSettingsService();
-      final exactAutoShareService = ExactAutoShareService();
       final isAutoShareEnabled =
       await autoShareSettingsService.isAutoShareEnabled();
+
+      final scheduled = await _notificationService!.scheduleExpiryNotifications(
+        result.gifticon,
+        isAutoShareEnabled: isAutoShareEnabled,
+      );
+
+      final exactAutoShareService = ExactAutoShareService();
 
       final savedGifticon = result.gifticon;
       final expiresAt = savedGifticon.expiresAt;

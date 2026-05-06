@@ -1,420 +1,448 @@
 import 'package:flutter/material.dart';
 
-import '../models/stored_gifticon.dart';
-import '../services/debug_now_provider.dart';
-import '../services/debug_scenario_service.dart';
-import '../services/debug_time_controller.dart';
-import '../services/gifticon_services.dart';
-import 'gifticon_list_page.dart';
+import '../services/gifticon_notification_service.dart';
+import '../services/auto_share_settings_service.dart';
+import '../services/app_logger.dart';
 
-class DebugScenarioRunnerPage extends StatefulWidget {
-  const DebugScenarioRunnerPage({
+class NotificationTestPage extends StatefulWidget {
+  const NotificationTestPage({
     super.key,
-    required this.services,
-    required this.debugTimeController,
+    required this.notificationService,
   });
 
-  final GifticonServices services;
-  final DebugTimeController debugTimeController;
+  final GifticonNotificationService notificationService;
 
   @override
-  State<DebugScenarioRunnerPage> createState() => _DebugScenarioRunnerPageState();
+  State<NotificationTestPage> createState() => _NotificationTestPageState();
 }
 
-class _DebugScenarioRunnerPageState extends State<DebugScenarioRunnerPage> {
-  late final DebugScenarioService _runner;
-  final List<String> _logs = <String>[];
+class _NotificationTestPageState extends State<NotificationTestPage> {
+  bool _isAutoShareEnabled = false;
+  bool _isLoading = true;
 
-  bool _busy = false;
-  String? _deviceId;
-  String? _nickname;
-  List<StoredGifticon> _items = const <StoredGifticon>[];
-
-  DateTime? _oneDayBeforeAt9am(StoredGifticon? item) {
-    final expiresAt = item?.expiresAt;
-    if (expiresAt == null) return null;
-
-    final target = expiresAt.subtract(const Duration(days: 1));
-    return DateTime(target.year, target.month, target.day, 9, 0, 0);
-  }
-
-  String _fmtDateTime(DateTime? value) {
-    if (value == null) return '-';
-    final y = value.year.toString().padLeft(4, '0');
-    final m = value.month.toString().padLeft(2, '0');
-    final d = value.day.toString().padLeft(2, '0');
-    final hh = value.hour.toString().padLeft(2, '0');
-    final mm = value.minute.toString().padLeft(2, '0');
-    final ss = value.second.toString().padLeft(2, '0');
-    return '$y-$m-$d $hh:$mm:$ss';
-  }
+  static const Color _textPrimary = Color(0xFF1A1A1A);
+  static const Color _textSecondary = Color(0xFF6B6B6B);
+  static const Color _accent = Color(0xFF6155F5);
+  static const Color _success = Color(0xFF10B981);
+  static const Color _warning = Color(0xFFF59E0B);
 
   @override
   void initState() {
     super.initState();
-    _runner = DebugScenarioService(
-      storageService: widget.services.storageService,
-      notificationService: widget.services.notificationService,
-      sharingService: widget.services.sharingService,
-      deviceIdService: widget.services.deviceIdService,
-    );
-    _load();
+    _loadAutoShareSettings();
   }
 
-  void _log(String message) {
-    final now = DateTime.now();
-    final hh = now.hour.toString().padLeft(2, '0');
-    final mm = now.minute.toString().padLeft(2, '0');
-    final ss = now.second.toString().padLeft(2, '0');
+  Future<void> _loadAutoShareSettings() async {
+    final service = AutoShareSettingsService();
+    final enabled = await service.isAutoShareEnabled();
 
     setState(() {
-      _logs.insert(0, '[$hh:$mm:$ss] $message');
+      _isAutoShareEnabled = enabled;
+      _isLoading = false;
     });
   }
 
-  Future<void> _load() async {
-    setState(() => _busy = true);
-    try {
-      final deviceId = await _runner.getDeviceId();
-      final nickname = await _runner.getNickname();
-      final items = _runner.getAllGifticons();
+  Future<void> _showThreeDaysBeforeNotification() async {
+    await AppLogger.log(
+      tag: 'NotificationTest',
+      event: 'show_three_days_before',
+      data: {
+        'isAutoShareEnabled': _isAutoShareEnabled,
+      },
+    );
 
-      if (!mounted) return;
-      setState(() {
-        _deviceId = deviceId;
-        _nickname = nickname;
-        _items = items;
-      });
-    } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
-    }
-  }
+    await widget.notificationService.showTestExpiryNotification(
+      daysRemaining: 3,
+      merchantName: '스타벅스',
+      itemName: '아메리카노 Tall',
+      isAutoShareEnabled: _isAutoShareEnabled,
+    );
 
-  Future<void> _run(String label, Future<void> Function() task) async {
-    setState(() => _busy = true);
-    _log('$label 시작');
-    try {
-      await task();
-      _log('$label 완료');
-      await _load();
-    } catch (e) {
-      _log('$label 실패: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
-    }
-  }
-
-  Future<void> _scheduleBackgroundAutoShare(StoredGifticon item) async {
-    await widget.services.workService.scheduleAutoShareWork(
-      gifticonId: item.id,
-      initialDelay: const Duration(seconds: 10),
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('3일 전 알림을 표시했어요'),
+        duration: Duration(seconds: 2),
+      ),
     );
   }
 
-  StoredGifticon? get _latestItem => _items.isEmpty ? null : _items.first;
+  Future<void> _showOneDayBeforeNotification() async {
+    await AppLogger.log(
+      tag: 'NotificationTest',
+      event: 'show_one_day_before',
+      data: {
+        'isAutoShareEnabled': _isAutoShareEnabled,
+      },
+    );
 
-  DateTime get _appNow => widget.debugTimeController.now();
+    await widget.notificationService.showTestExpiryNotification(
+      daysRemaining: 1,
+      merchantName: '스타벅스',
+      itemName: '아메리카노 Tall',
+      isAutoShareEnabled: _isAutoShareEnabled,
+    );
 
-  @override
-  Widget build(BuildContext context) {
-    final latest = _latestItem;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('1일 전 알림을 표시했어요'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
 
-    final oneDayBefore = _oneDayBeforeAt9am(latest);
-    final appNow = _appNow;
-    final isBeforeBoundary =
-    oneDayBefore?.isAfter(appNow);
+  Future<void> _toggleAutoShare() async {
+    final newValue = !_isAutoShareEnabled;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('디버그 시나리오 러너'),
-        actions: [
-          IconButton(
-            onPressed: _busy ? null : _load,
-            icon: const Icon(Icons.refresh),
+    setState(() {
+      _isAutoShareEnabled = newValue;
+    });
+
+    final service = AutoShareSettingsService();
+    await service.setAutoShareEnabled(newValue);
+
+    await AppLogger.log(
+      tag: 'NotificationTest',
+      event: 'toggle_auto_share',
+      data: {
+        'newValue': newValue,
+      },
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          newValue ? '자동 공유가 켜졌어요' : '자동 공유가 꺼졌어요',
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Widget _buildTestCard({
+    required String title,
+    required String description,
+    required Color color,
+    required VoidCallback onTest,
+    required String expectedMessage,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.2), width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _InfoCard(
-            title: '현재 상태',
-            children: [
-              Text('앱 기준 시각: ${widget.debugTimeController.label}'),
-              Text('기기 ID: ${_deviceId ?? '-'}'),
-              Text('닉네임: ${_nickname ?? '-'}'),
-              Text('기프티콘 수: ${_items.length}'),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _InfoCard(
-            title: '시간 프리셋',
-            children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  ElevatedButton(
-                    onPressed: _busy
-                        ? null
-                        : () {
-                      widget.debugTimeController.setFixedNow(
-                        DateTime(2026, 3, 30, 8, 59),
-                      );
-                      _log('고정 시간 설정: 2026-03-30 08:59');
-                      setState(() {});
-                    },
-                    child: const Text('2026-03-30 08:59'),
-                  ),
-                  ElevatedButton(
-                    onPressed: _busy
-                        ? null
-                        : () {
-                      widget.debugTimeController.setFixedNow(
-                        DateTime(2026, 3, 30, 9, 0),
-                      );
-                      _log('고정 시간 설정: 2026-03-30 09:00');
-                      setState(() {});
-                    },
-                    child: const Text('2026-03-30 09:00'),
-                  ),
-                  ElevatedButton(
-                    onPressed: _busy
-                        ? null
-                        : () {
-                      widget.debugTimeController.setFixedNow(
-                        DateTime(2026, 3, 30, 9, 1),
-                      );
-                      _log('고정 시간 설정: 2026-03-30 09:01');
-                      setState(() {});
-                    },
-                    child: const Text('2026-03-30 09:01'),
-                  ),
-                  OutlinedButton(
-                    onPressed: _busy
-                        ? null
-                        : () {
-                      widget.debugTimeController.clear();
-                      _log('고정 시간 해제');
-                      setState(() {});
-                    },
-                    child: const Text('시간 해제'),
-                  ),
-                  ElevatedButton(
-                    onPressed: _busy || latest == null
-                        ? null
-                        : () => _run(
-                      '경계값 테스트 실행',
-                          () async {
-                        final boundary = _oneDayBeforeAt9am(latest);
-                        final allowed =
-                        boundary != null ? boundary.isAfter(_appNow) : false;
-
-                        _log(
-                          'boundary check: appNow=${_fmtDateTime(_appNow)}, '
-                              'boundary=${_fmtDateTime(boundary)}, '
-                              'isAfter=$allowed',
-                        );
-
-                        await _runner.triggerOneDayBeforeShare(latest);
-
-                        _log(
-                          'boundary trigger requested: id=${latest.id}, '
-                              'expectedByCurrentLogic=${allowed ? 'TRIGGER' : 'SKIP'}',
-                        );
-                      },
-                    ),
-                    child: const Text('경계값 테스트 실행'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _InfoCard(
-            title: '시나리오 액션',
-            children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  ElevatedButton(
-                    onPressed: _busy
-                        ? null
-                        : () => _run(
-                      '내일 만료 기프티콘 생성',
-                          () async {
-                        final seeded = await _runner.seedGifticon(
-                          expiresAt: DateTime(
-                            _appNow.year,
-                            _appNow.month,
-                            _appNow.day + 1,
-                          ),
-                        );
-                        _log(
-                          'seed created: id=${seeded.id} expiresAt=${seeded.expiresAt}',
-                        );
-                      },
-                    ),
-                    child: const Text('내일 만료 기프티콘 생성'),
-                  ),
-                  ElevatedButton(
-                    onPressed: _busy || latest == null
-                        ? null
-                        : () => _run(
-                      '1일 전 공유 트리거',
-                          () async {
-                        await _runner.triggerOneDayBeforeShare(latest);
-                        _log('share trigger requested: id=${latest.id}');
-                      },
-                    ),
-                    child: const Text('1일 전 공유 트리거'),
-                  ),
-                  ElevatedButton(
-                    onPressed: _busy || latest == null
-                        ? null
-                        : () => _run(
-                      '직접 공유',
-                          () async {
-                        await _runner.directShare(latest);
-                        _log('direct share requested: id=${latest.id}');
-                      },
-                    ),
-                    child: const Text('직접 공유'),
-                  ),
-                  ElevatedButton(
-                    onPressed: _busy || latest == null
-                        ? null
-                        : () => _run(
-                      '백그라운드 공유 작업 예약(10초)',
-                          () async {
-                        await _scheduleBackgroundAutoShare(latest);
-                        _log(
-                          'background auto share scheduled: '
-                              'id=${latest.id}, delay=10s',
-                        );
-                      },
-                    ),
-                    child: const Text('백그라운드 공유 예약(10초)'),
-                  ),
-                  ElevatedButton(
-                    onPressed: _busy || latest == null
-                        ? null
-                        : () => _run(
-                      '로컬 사용 처리',
-                          () async {
-                        await _runner.markUsedLocal(latest.id);
-                        _log('local used: id=${latest.id}');
-                      },
-                    ),
-                    child: const Text('로컬 사용 처리'),
-                  ),
-                  ElevatedButton(
-                    onPressed: _busy || latest == null
-                        ? null
-                        : () => _run(
-                      '원격 사용 처리',
-                          () async {
-                        await _runner.markUsedRemote(latest.id);
-                        _log('remote used requested: id=${latest.id}');
-                      },
-                    ),
-                    child: const Text('원격 사용 처리'),
-                  ),
-                  OutlinedButton(
-                    onPressed: _busy
-                        ? null
-                        : () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => GifticonListPage(
-                            servicesOverride: widget.services,
-                            nowProviderOverride:
-                            DebugNowProvider(widget.debugTimeController),
-                          ),
-                        ),
-                      );
-                    },
-                    child: const Text('보관함 열기'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _InfoCard(
-            title: '최신 기프티콘',
-            children: [
-              if (latest == null)
-                const Text('없음')
-              else
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Text('id: ${latest.id}'),
-                    Text('상품: ${latest.itemName ?? '-'}'),
-                    Text('브랜드: ${latest.merchantName ?? '-'}'),
-                    Text('만료일: ${latest.expiresAt ?? '-'}'),
-                    Text('sharedAt: ${latest.sharedAt ?? '-'}'),
-                    Text('receivedFrom: ${latest.receivedFrom ?? '-'}'),
-                    Text('ownerNickname: ${latest.ownerNickname ?? '-'}'),
-                    Text('usedAt: ${latest.usedAt ?? '-'}'),
-                    Text('usedByNickname: ${latest.usedByNickname ?? '-'}'),
-                    Text('앱 기준 시각: ${_fmtDateTime(appNow)}'),
-                    Text('1일 전 기준 시각: ${_fmtDateTime(oneDayBefore)}'),
-                    Text(
-                      '현재 구현 기준 공유 트리거 가능: '
-                          '${isBeforeBoundary == null ? '-' : isBeforeBoundary ? 'YES' : 'NO'}',
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: _textPrimary,
+                          height: 1.2,
+                        ),
+                      ),
                     ),
                   ],
                 ),
-            ],
+                const SizedBox(height: 12),
+                Text(
+                  description,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400,
+                    color: _textSecondary,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: color.withOpacity(0.15),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.notifications_outlined,
+                        size: 16,
+                        color: color,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          expectedMessage,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: color,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-          _InfoCard(
-            title: '로그',
-            children: [
-              if (_logs.isEmpty)
-                const Text('아직 로그가 없습니다.')
-              else
-                ..._logs.map((e) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(e),
-                )),
-            ],
+          Container(
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(
+                  color: color.withOpacity(0.1),
+                  width: 1,
+                ),
+              ),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onTest,
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(16),
+                  bottomRight: Radius.circular(16),
+                ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '알림 테스트',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: color,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
-}
-
-class _InfoCard extends StatelessWidget {
-  const _InfoCard({
-    required this.title,
-    required this.children,
-  });
-
-  final String title;
-  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            ...children,
-          ],
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF8F9FA),
+        body: Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(_accent),
+          ),
+        ),
+      );
+    }
+
+    final oneDayMessage = _isAutoShareEnabled
+        ? '내일 아침 공유될 예정이에요. 오늘 꼭 사용해 보세요.'
+        : '내일 만료됩니다. 오늘 꼭 사용해 보세요.';
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FA),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leadingWidth: 44,
+        leading: IconButton(
+          onPressed: () => Navigator.of(context).pop(),
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: _textPrimary,
+            size: 22,
+          ),
+        ),
+        titleSpacing: 0,
+        title: const Text(
+          '알림 테스트',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: _textPrimary,
+            height: 1.2,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 8),
+
+              // 자동 공유 설정 토글
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: _accent.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.share_outlined,
+                        color: _accent,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '자동 공유 시뮬레이션',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: _textPrimary,
+                              height: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _isAutoShareEnabled ? '켜짐' : '꺼짐',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: _isAutoShareEnabled ? _success : _textSecondary,
+                              height: 1.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: _isAutoShareEnabled,
+                      onChanged: (_) => _toggleAutoShare(),
+                      activeColor: _accent,
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 32),
+
+              const Text(
+                '만료 알림 테스트',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: _textSecondary,
+                  height: 1.2,
+                  letterSpacing: 0.5,
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              _buildTestCard(
+                title: '3일 전 알림',
+                description: '만료 3일 전에 표시되는 알림입니다. 자동 공유 설정과 관계없이 동일한 메시지가 표시됩니다.',
+                color: _warning,
+                onTest: _showThreeDaysBeforeNotification,
+                expectedMessage: '3일 남았어요. 사용을 잊지 마세요.',
+              ),
+
+              _buildTestCard(
+                title: '1일 전 알림',
+                description: '만료 1일 전에 표시되는 알림입니다. 자동 공유 설정에 따라 메시지가 달라집니다.',
+                color: _isAutoShareEnabled ? _success : Colors.red,
+                onTest: _showOneDayBeforeNotification,
+                expectedMessage: oneDayMessage,
+              ),
+
+              const SizedBox(height: 24),
+
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: _accent.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _accent.withOpacity(0.15),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 20,
+                      color: _accent,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '위 토글을 변경하면 1일 전 알림 메시지가 즉시 바뀝니다. 각 버튼을 눌러 실제 알림을 확인해보세요.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: _accent,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

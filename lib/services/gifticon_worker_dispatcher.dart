@@ -138,8 +138,14 @@ void callbackDispatcher() {
           },
         );
 
+        // 자동 공유 설정 확인
+        final isAutoShareEnabled = await autoShareSettingsService.isAutoShareEnabled();
+
         final scheduled =
-        await notificationService.scheduleExpiryNotifications(stored);
+        await notificationService.scheduleExpiryNotifications(
+          stored,
+          isAutoShareEnabled: isAutoShareEnabled,
+        );
 
         if (!scheduled) {
           await AppLogger.log(
@@ -151,8 +157,7 @@ void callbackDispatcher() {
           );
         }
 
-        // 자동 공유 설정 확인
-        final isAutoShareEnabled = await autoShareSettingsService.isAutoShareEnabled();
+        // 자동 공유 설정 확인 (실험 그룹 포함)
         final experimentGroup = await autoShareSettingsService.getExperimentGroup();
 
         await AppLogger.log(

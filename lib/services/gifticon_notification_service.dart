@@ -245,7 +245,10 @@ class GifticonNotificationService {
     );
   }
 
-  Future<bool> scheduleExpiryNotifications(StoredGifticon stored) async {
+  Future<bool> scheduleExpiryNotifications(
+      StoredGifticon stored, {
+        required bool isAutoShareEnabled,
+      }) async {
     final expiresAt = stored.expiresAt;
     if (expiresAt == null) {
       await AppLogger.log(
@@ -287,6 +290,10 @@ class GifticonNotificationService {
       payload: stored.id,
     );
 
+    final oneDaySuffix = isAutoShareEnabled
+        ? '내일 아침 공유될 예정이에요. 오늘 꼭 사용해 보세요.'
+        : '내일 만료됩니다. 오늘 꼭 사용해 보세요.';
+
     await _scheduleExpiryNotification(
       id: _oneDayBeforeNotificationId(stored.id),
       scheduledAt: oneDayAt,
@@ -294,7 +301,7 @@ class GifticonNotificationService {
       body: _buildExpiryBody(
         merchantName: stored.merchantName,
         itemName: stored.itemName,
-        suffix: '내일 아침 공유될 예정이에요. 오늘 꼭 사용해 보세요.',
+        suffix: oneDaySuffix,
       ),
       payload: stored.id,
     );
@@ -307,6 +314,7 @@ class GifticonNotificationService {
         'expiresAt': expiresAt.toIso8601String(),
         'threeDaysAt': threeDaysAt.toIso8601String(),
         'oneDayAt': oneDayAt.toIso8601String(),
+        'isAutoShareEnabled': isAutoShareEnabled,
       },
     );
 
@@ -358,8 +366,9 @@ class GifticonNotificationService {
   }
 
   Future<void> rescheduleAllExpiryNotifications(
-      List<StoredGifticon> gifticons,
-      ) async {
+      List<StoredGifticon> gifticons, {
+        required bool isAutoShareEnabled,
+      }) async {
     final canSchedule = await canScheduleExactAlarms();
     if (!canSchedule) {
       await AppLogger.log(
@@ -374,11 +383,15 @@ class GifticonNotificationService {
       event: 'reschedule_all_start',
       data: {
         'count': gifticons.length,
+        'isAutoShareEnabled': isAutoShareEnabled,
       },
     );
 
     for (final stored in gifticons) {
-      await scheduleExpiryNotifications(stored);
+      await scheduleExpiryNotifications(
+        stored,
+        isAutoShareEnabled: isAutoShareEnabled,
+      );
     }
 
     await AppLogger.log(
@@ -646,6 +659,70 @@ class GifticonNotificationService {
         response.id == _sharedNotificationId) {
       _onGifticonSaved?.call();
     }
+  }
+
+  /// 테스트용: 만료 알림을 즉시 표시
+  Future<void> showTestExpiryNotification({
+    required int daysRemaining,
+    required String merchantName,
+    required String itemName,
+    required bool isAutoShareEnabled,
+  }) async {
+    const androidDetails = AndroidNotificationDetails(
+      _expiryChannelId,
+      _expiryChannelName,
+      channelDescription: _expiryChannelDescription,
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      category: AndroidNotificationCategory.reminder,
+    );
+
+    const details = NotificationDetails(android: androidDetails);
+
+    String title;
+    String suffix;
+
+    if (daysRemaining == 3) {
+      title = '기프티콘 만료 3일 전';
+      suffix = '3일 남았어요. 사용을 잊지 마세요.';
+    } else if (daysRemaining == 1) {
+      title = '기프티콘 만료 하루 전';
+      suffix = isAutoShareEnabled
+          ? '내일 아침 공유될 예정이에요. 오늘 꼭 사용해 보세요.'
+          : '내일 만료됩니다. 오늘 꼭 사용해 보세요.';
+    } else {
+      title = '기프티콘 만료 알림';
+      suffix = '$daysRemaining일 남았어요.';
+    }
+
+    final body = _buildExpiryBody(
+      merchantName: merchantName,
+      itemName: itemName,
+      suffix: suffix,
+    );
+
+    await _notifications.show(
+      id: DateTime.now().millisecondsSinceEpoch % 100000,
+      title: title,
+      body: body,
+      notificationDetails: details,
+      payload: 'test_expiry_$daysRemaining',
+    );
+
+    await AppLogger.log(
+      tag: 'Notification',
+      event: 'show_test_expiry',
+      data: {
+        'daysRemaining': daysRemaining,
+        'merchantName': merchantName,
+        'itemName': itemName,
+        'isAutoShareEnabled': isAutoShareEnabled,
+        'title': title,
+        'body': body,
+      },
+    );
   }
 }
 

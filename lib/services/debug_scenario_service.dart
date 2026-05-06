@@ -50,7 +50,7 @@ class DebugScenarioService {
   }
 
   Future<void> triggerOneDayBeforeShare(StoredGifticon stored) async {
-    await notificationService.scheduleExpiryNotifications(stored);
+    await notificationService.scheduleExpiryNotifications(stored, isAutoShareEnabled: false);
   }
 
   Future<void> directShare(StoredGifticon stored) async {

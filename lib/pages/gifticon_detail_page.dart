@@ -7,6 +7,7 @@ import '../services/gifticon_notification_service.dart';
 import '../services/gifticon_sharing_service.dart';
 import '../services/gifticon_storage_service.dart';
 import '../services/exact_auto_share_service.dart';
+import '../services/auto_share_settings_service.dart';
 import '../services/app_logger.dart';
 import 'gifticon_edit_page.dart';
 
@@ -404,8 +405,15 @@ class _GifticonDetailPageState extends State<GifticonDetailPage> {
         await widget.notificationService.cancelExpiryNotifications(updated.id);
 
         if (!updated.isUsed) {
+          final autoShareSettingsService = AutoShareSettingsService();
+          final isAutoShareEnabled =
+          await autoShareSettingsService.isAutoShareEnabled();
+
           notificationScheduled =
-          await widget.notificationService.scheduleExpiryNotifications(updated);
+          await widget.notificationService.scheduleExpiryNotifications(
+            updated,
+            isAutoShareEnabled: isAutoShareEnabled,
+          );
         }
 
         await _rescheduleAutoShare(updated);

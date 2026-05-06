@@ -96,6 +96,7 @@ class GifticonServices {
 
     await notificationService.rescheduleAllExpiryNotifications(
       storageService.getAllGifticons(),
+      isAutoShareEnabled: isAutoShareEnabled,
     );
 
     await AppLogger.log(
@@ -103,6 +104,7 @@ class GifticonServices {
       event: 'expiry_rescheduled',
       data: {
         'gifticonCount': storageService.getAllGifticons().length,
+        'isAutoShareEnabled': isAutoShareEnabled,
       },
     );
 
